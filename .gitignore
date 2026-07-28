@@ -1,0 +1,4 @@
+/doc/
+/.phpunit.cache/
+/dist/
+.DS_Store

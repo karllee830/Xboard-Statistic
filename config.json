@@ -1,0 +1,301 @@
+{
+    "name": "Xboard Statistics",
+    "code": "xboard_statistic",
+    "version": "0.1.0",
+    "description": "Sing-box 节点多维流量统计、排行与交叉下钻插件",
+    "author": "karllee830",
+    "type": "feature",
+    "require": {
+        "xboard": ">=1.0.0"
+    },
+    "config": {
+        "hourly_retention_days": {
+            "type": "number",
+            "default": 30,
+            "label": "小时数据保留天数",
+            "description": "详细小时事实数据的保留时间（7-90 天）"
+        },
+        "daily_retention_days": {
+            "type": "number",
+            "default": 365,
+            "label": "日汇总保留天数",
+            "description": "日级汇总数据的保留时间"
+        },
+        "batch_retention_days": {
+            "type": "number",
+            "default": 90,
+            "label": "批次元数据保留天数",
+            "description": "上报批次状态和质量指标的保留时间（30-365 天）"
+        },
+        "max_report_age_days": {
+            "type": "number",
+            "default": 14,
+            "label": "最大补报天数",
+            "description": "拒绝比该值更早的小时批次"
+        },
+        "max_records_per_batch": {
+            "type": "number",
+            "default": 200000,
+            "label": "单批最大记录数",
+            "description": "节点每个小时批次允许的最大维度记录数"
+        },
+        "mask_source_ip": {
+            "type": "boolean",
+            "default": false,
+            "label": "页面隐藏来源 IP",
+            "description": "仅影响管理页面显示，不改变底层统计"
+        },
+        "geoip_country_mmdb": {
+            "type": "string",
+            "default": "",
+            "label": "GeoIP Country MMDB 路径",
+            "description": "插件服务器本地 MaxMind GeoLite2/GeoIP2 Country 数据库；留空不派生国家"
+        },
+        "geoip_asn_mmdb": {
+            "type": "string",
+            "default": "",
+            "label": "GeoIP ASN MMDB 路径",
+            "description": "插件服务器本地 MaxMind GeoLite2/GeoIP2 ASN 数据库；留空不派生 ASN"
+        }
+    },
+    "admin_menus": [
+        {
+            "id": "by-node",
+            "title": "节点流量排行",
+            "path": "by-node",
+            "icon": "server",
+            "description": "最近 24 小时节点流量排行；表格支持名称搜索和列排序"
+        },
+        {
+            "id": "by-user",
+            "title": "用户流量排行",
+            "path": "by-user",
+            "icon": "users",
+            "description": "最近 24 小时用户流量排行；表格支持邮箱搜索和列排序"
+        },
+        {
+            "id": "by-domain",
+            "title": "域名流量排行",
+            "path": "by-domain",
+            "icon": "globe",
+            "description": "最近 24 小时完整域名流量排行"
+        },
+        {
+            "id": "source-ip",
+            "title": "来源 IP 排行",
+            "path": "source-ip",
+            "icon": "network",
+            "description": "最近 24 小时请求来源 IP 流量排行"
+        },
+        {
+            "id": "destination-ip",
+            "title": "目的 IP 排行",
+            "path": "destination-ip",
+            "icon": "route",
+            "description": "最近 24 小时请求目的 IP 流量排行"
+        },
+        {
+            "id": "outbound",
+            "title": "出口流量排行",
+            "path": "outbound",
+            "icon": "send",
+            "description": "最近 24 小时 Sing-box 出站标签流量排行"
+        },
+        {
+            "id": "source-country",
+            "title": "来源国家排行",
+            "path": "source-country",
+            "icon": "map",
+            "description": "根据插件服务器本地 MMDB 派生的来源 IP 国家排行"
+        },
+        {
+            "id": "destination-country",
+            "title": "目的国家排行",
+            "path": "destination-country",
+            "icon": "map-pin",
+            "description": "根据插件服务器本地 MMDB 派生的目的 IP 国家排行"
+        },
+        {
+            "id": "source-asn",
+            "title": "来源 ASN 排行",
+            "path": "source-asn",
+            "icon": "radio-tower",
+            "description": "根据插件服务器本地 MMDB 派生的来源 IP ASN 排行"
+        },
+        {
+            "id": "destination-asn",
+            "title": "目的 ASN 排行",
+            "path": "destination-asn",
+            "icon": "cloud",
+            "description": "根据插件服务器本地 MMDB 派生的目的 IP ASN 排行"
+        }
+    ],
+    "admin_crud": {
+        "by-node": {
+            "version": 1,
+            "title": "节点流量排行",
+            "description": "最近 24 小时；可搜索节点名称。交叉筛选可通过插件 traffic API 组合 node_id、user_id、domain、来源/目的 IP 等参数。",
+            "id_field": "id",
+            "api": { "list": "/plugin/xboard-statistic/ranking/node" },
+            "columns": [
+                { "key": "rank", "title": "排名", "type": "number", "width": 70 },
+                { "key": "label", "title": "节点", "type": "string", "searchable": true },
+                { "key": "total_bytes", "title": "总字节", "type": "string", "sortable": true },
+                { "key": "upload_bytes", "title": "上传字节", "type": "string", "sortable": true },
+                { "key": "download_bytes", "title": "下载字节", "type": "string", "sortable": true },
+                { "key": "percentage", "title": "占比 %", "type": "number" },
+                { "key": "connection_count", "title": "连接数", "type": "number", "sortable": true },
+                { "key": "active_seconds", "title": "活跃秒数", "type": "number", "sortable": true }
+            ],
+            "form": {},
+            "actions": { "create": false, "edit": false, "delete": false }
+        },
+        "by-user": {
+            "version": 1,
+            "title": "用户流量排行",
+            "description": "最近 24 小时；可搜索用户邮箱。",
+            "id_field": "id",
+            "api": { "list": "/plugin/xboard-statistic/ranking/user" },
+            "columns": [
+                { "key": "rank", "title": "排名", "type": "number", "width": 70 },
+                { "key": "label", "title": "用户", "type": "string", "searchable": true },
+                { "key": "total_bytes", "title": "总字节", "type": "string", "sortable": true },
+                { "key": "upload_bytes", "title": "上传字节", "type": "string", "sortable": true },
+                { "key": "download_bytes", "title": "下载字节", "type": "string", "sortable": true },
+                { "key": "percentage", "title": "占比 %", "type": "number" },
+                { "key": "connection_count", "title": "连接数", "type": "number", "sortable": true }
+            ],
+            "form": {},
+            "actions": { "create": false, "edit": false, "delete": false }
+        },
+        "by-domain": {
+            "version": 1,
+            "title": "域名流量排行",
+            "description": "最近 24 小时；可搜索完整域名。unknown 表示无法可靠识别。",
+            "id_field": "id",
+            "api": { "list": "/plugin/xboard-statistic/ranking/domain" },
+            "columns": [
+                { "key": "rank", "title": "排名", "type": "number", "width": 70 },
+                { "key": "label", "title": "域名", "type": "string", "searchable": true },
+                { "key": "total_bytes", "title": "总字节", "type": "string", "sortable": true },
+                { "key": "upload_bytes", "title": "上传字节", "type": "string", "sortable": true },
+                { "key": "download_bytes", "title": "下载字节", "type": "string", "sortable": true },
+                { "key": "percentage", "title": "占比 %", "type": "number" },
+                { "key": "connection_count", "title": "连接数", "type": "number", "sortable": true }
+            ],
+            "form": {},
+            "actions": { "create": false, "edit": false, "delete": false }
+        },
+        "source-ip": {
+            "version": 1,
+            "title": "来源 IP 排行",
+            "description": "最近 24 小时；支持精确搜索 IPv4/IPv6、unknown 或 __other__。",
+            "id_field": "id",
+            "api": { "list": "/plugin/xboard-statistic/ranking/source_ip" },
+            "columns": [
+                { "key": "rank", "title": "排名", "type": "number", "width": 70 },
+                { "key": "label", "title": "来源 IP", "type": "string", "searchable": true },
+                { "key": "total_bytes", "title": "总字节", "type": "string", "sortable": true },
+                { "key": "upload_bytes", "title": "上传字节", "type": "string", "sortable": true },
+                { "key": "download_bytes", "title": "下载字节", "type": "string", "sortable": true },
+                { "key": "percentage", "title": "占比 %", "type": "number" }
+            ],
+            "form": {},
+            "actions": { "create": false, "edit": false, "delete": false }
+        },
+        "destination-ip": {
+            "version": 1,
+            "title": "目的 IP 排行",
+            "description": "最近 24 小时；支持精确搜索 IPv4/IPv6、unknown 或 __other__。",
+            "id_field": "id",
+            "api": { "list": "/plugin/xboard-statistic/ranking/destination_ip" },
+            "columns": [
+                { "key": "rank", "title": "排名", "type": "number", "width": 70 },
+                { "key": "label", "title": "目的 IP", "type": "string", "searchable": true },
+                { "key": "total_bytes", "title": "总字节", "type": "string", "sortable": true },
+                { "key": "upload_bytes", "title": "上传字节", "type": "string", "sortable": true },
+                { "key": "download_bytes", "title": "下载字节", "type": "string", "sortable": true },
+                { "key": "percentage", "title": "占比 %", "type": "number" }
+            ],
+            "form": {},
+            "actions": { "create": false, "edit": false, "delete": false }
+        },
+        "outbound": {
+            "version": 1,
+            "title": "出口流量排行",
+            "description": "最近 24 小时；可搜索 Sing-box 出站标签。",
+            "id_field": "id",
+            "api": { "list": "/plugin/xboard-statistic/ranking/outbound" },
+            "columns": [
+                { "key": "rank", "title": "排名", "type": "number", "width": 70 },
+                { "key": "label", "title": "出口", "type": "string", "searchable": true },
+                { "key": "total_bytes", "title": "总字节", "type": "string", "sortable": true },
+                { "key": "upload_bytes", "title": "上传字节", "type": "string", "sortable": true },
+                { "key": "download_bytes", "title": "下载字节", "type": "string", "sortable": true },
+                { "key": "percentage", "title": "占比 %", "type": "number" }
+            ],
+            "form": {},
+            "actions": { "create": false, "edit": false, "delete": false }
+        },
+        "source-country": {
+            "version": 1,
+            "title": "来源国家排行",
+            "description": "最近 24 小时；国家来自本地 MMDB，unknown 表示尚未解析。",
+            "id_field": "id",
+            "api": { "list": "/plugin/xboard-statistic/ranking/source_country" },
+            "columns": [
+                { "key": "rank", "title": "排名", "type": "number", "width": 70 },
+                { "key": "label", "title": "国家代码", "type": "string", "searchable": true },
+                { "key": "total_bytes", "title": "总字节", "type": "string", "sortable": true },
+                { "key": "percentage", "title": "占比 %", "type": "number" }
+            ],
+            "form": {},
+            "actions": { "create": false, "edit": false, "delete": false }
+        },
+        "destination-country": {
+            "version": 1,
+            "title": "目的国家排行",
+            "description": "最近 24 小时；国家来自本地 MMDB，unknown 表示尚未解析。",
+            "id_field": "id",
+            "api": { "list": "/plugin/xboard-statistic/ranking/destination_country" },
+            "columns": [
+                { "key": "rank", "title": "排名", "type": "number", "width": 70 },
+                { "key": "label", "title": "国家代码", "type": "string", "searchable": true },
+                { "key": "total_bytes", "title": "总字节", "type": "string", "sortable": true },
+                { "key": "percentage", "title": "占比 %", "type": "number" }
+            ],
+            "form": {},
+            "actions": { "create": false, "edit": false, "delete": false }
+        },
+        "source-asn": {
+            "version": 1,
+            "title": "来源 ASN 排行",
+            "description": "最近 24 小时；ASN 来自本地 MMDB。",
+            "id_field": "id",
+            "api": { "list": "/plugin/xboard-statistic/ranking/source_asn" },
+            "columns": [
+                { "key": "rank", "title": "排名", "type": "number", "width": 70 },
+                { "key": "label", "title": "ASN", "type": "string", "searchable": true },
+                { "key": "total_bytes", "title": "总字节", "type": "string", "sortable": true },
+                { "key": "percentage", "title": "占比 %", "type": "number" }
+            ],
+            "form": {},
+            "actions": { "create": false, "edit": false, "delete": false }
+        },
+        "destination-asn": {
+            "version": 1,
+            "title": "目的 ASN 排行",
+            "description": "最近 24 小时；ASN 来自本地 MMDB。",
+            "id_field": "id",
+            "api": { "list": "/plugin/xboard-statistic/ranking/destination_asn" },
+            "columns": [
+                { "key": "rank", "title": "排名", "type": "number", "width": 70 },
+                { "key": "label", "title": "ASN", "type": "string", "searchable": true },
+                { "key": "total_bytes", "title": "总字节", "type": "string", "sortable": true },
+                { "key": "percentage", "title": "占比 %", "type": "number" }
+            ],
+            "form": {},
+            "actions": { "create": false, "edit": false, "delete": false }
+        }
+    }
+}
