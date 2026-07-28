@@ -23,6 +23,33 @@ final class BatchValidatorTest extends TestCase
         self::assertSame(6, $validated['records'][0]['destination_ip']['version']);
     }
 
+    public function testItAcceptsOneMinuteSchemaV2Bucket(): void
+    {
+        $payload = $this->payload();
+        $start = new DateTimeImmutable(gmdate('Y-m-d\TH:i:00\Z', time() - 120));
+        $payload['schema_version'] = 2;
+        $payload['bucket_start'] = $start->format('Y-m-d\TH:i:s\Z');
+        $payload['bucket_end'] = $start->modify('+1 minute')->format('Y-m-d\TH:i:s\Z');
+
+        $validated = (new BatchValidator())->validate($payload, 100, 14);
+
+        self::assertSame(2, $validated['schema_version']);
+        self::assertSame(60, $validated['bucket_end']->getTimestamp() - $validated['bucket_start']->getTimestamp());
+    }
+
+    public function testSchemaV2RejectsHourLongBucket(): void
+    {
+        $payload = $this->payload();
+        $payload['schema_version'] = 2;
+
+        try {
+            (new BatchValidator())->validate($payload, 100, 14);
+            self::fail('Expected invalid_bucket_range');
+        } catch (IngestException $exception) {
+            self::assertSame('invalid_bucket_range', $exception->errorCode);
+        }
+    }
+
     public function testItRejectsInvalidRegistrableDomain(): void
     {
         $payload = $this->payload();

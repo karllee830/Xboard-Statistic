@@ -13,7 +13,7 @@ final class CleanupStatisticsCommand extends Command
     public const SIGNATURE = 'xboard-statistic:cleanup';
 
     protected $signature = self::SIGNATURE . ' {--dry-run : 只统计将被删除的数据}';
-    protected $description = '清理 Xboard Statistics 过期小时数据和孤立维度';
+    protected $description = '清理 Xboard Statistics 过期明细数据和孤立维度';
 
     public function handle(PluginManager $pluginManager): int
     {

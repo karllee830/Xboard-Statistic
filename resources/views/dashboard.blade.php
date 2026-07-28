@@ -252,29 +252,11 @@
             font-weight: 600;
         }
 
-        .analysis-layout { display: grid; grid-template-columns: 224px minmax(0, 1fr); gap: 16px; align-items: start; }
-        .path-panel {
-            position: sticky;
-            top: 76px;
-            border: 1px solid var(--line);
-            border-radius: 12px;
-            background: var(--surface);
-            padding: 16px;
-            box-shadow: var(--shadow);
-        }
-        .path-panel h2 { font-size: 14px; }
-        .path-help { margin-top: 4px; color: var(--muted); font-size: 12px; }
-        .path-list { display: grid; gap: 0; margin-top: 18px; }
-        .path-step { position: relative; display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; min-height: 70px; }
-        .path-step:not(:last-child)::after { content: ""; position: absolute; left: 12px; top: 27px; bottom: 0; width: 1px; background: var(--line); }
-        .step-index { position: relative; z-index: 1; display: flex; width: 26px; height: 26px; align-items: center; justify-content: center; border: 1px solid var(--line-strong); border-radius: 50%; background: var(--surface); color: var(--muted); font-size: 12px; font-weight: 700; }
-        .path-step.done .step-index, .path-step.current .step-index { border-color: var(--brand); background: var(--brand); color: #fff; }
-        .step-label { color: var(--muted); font-size: 12px; }
-        .step-value { overflow: hidden; margin-top: 2px; color: var(--text-strong); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-        .path-reset { width: 100%; margin-top: 6px; }
-
+        .analysis-layout { display: block; }
         .workspace { min-width: 0; }
         .context-row { display: flex; min-height: 36px; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 10px; }
+        .context-path { display: flex; min-width: 0; align-items: center; gap: 10px; }
+        .context-label { flex: 0 0 auto; color: var(--muted); font-size: 12px; font-weight: 650; }
         .breadcrumbs { display: flex; min-width: 0; align-items: center; gap: 7px; flex-wrap: wrap; }
         .crumb { border: 0; background: transparent; padding: 3px 0; color: var(--muted); cursor: pointer; }
         .crumb:hover { color: var(--brand); }
@@ -307,18 +289,18 @@
             background: var(--surface);
             box-shadow: var(--shadow);
         }
-        .trend-panel { margin-bottom: 16px; padding: 18px 20px 14px; }
+        .trend-panel { padding: 18px 20px 14px; }
         .surface-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
         .surface-head h2 { color: var(--text-strong); font-size: 16px; }
         .surface-kicker { margin-top: 3px; color: var(--muted); font-size: 12px; }
         .legend { display: flex; align-items: center; gap: 14px; color: var(--muted); font-size: 12px; }
         .legend-upload { color: var(--brand); }
         .legend-download { color: var(--download); }
-        .chart-wrap { position: relative; height: 248px; }
+        .chart-wrap { position: relative; height: 210px; }
         #trend-canvas { width: 100%; height: 100%; }
         .chart-tooltip { position: absolute; z-index: 2; pointer-events: none; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 8px 10px; box-shadow: 0 8px 24px rgb(16 24 40 / 12%); color: var(--muted); font-size: 12px; white-space: nowrap; }
 
-        .ranking-panel { overflow: hidden; }
+        .ranking-panel { overflow: hidden; margin-bottom: 16px; }
         .ranking-head { padding: 18px 20px 12px; }
         .ranking-tools { display: flex; align-items: center; gap: 8px; }
         .ranking-tools input { width: 210px; }
@@ -331,9 +313,14 @@
         tbody tr { transition: background .14s ease; }
         tbody tr:hover { background: var(--surface-subtle); }
         .rank-cell { width: 52px; color: var(--muted); }
+        .dimension-cell { min-width: 250px; }
+        .row-primary { display: flex; min-width: 0; align-items: center; gap: 10px; }
         .row-button { display: block; max-width: 340px; overflow: hidden; border: 0; background: transparent; padding: 0; color: var(--text-strong); cursor: pointer; font-weight: 670; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
         .row-button:hover { color: var(--brand); }
         .row-label { display: block; max-width: 340px; overflow: hidden; color: var(--text-strong); font-weight: 670; text-overflow: ellipsis; }
+        .row-drill-hint { flex: 0 0 auto; color: var(--muted); font-size: 11px; font-weight: 650; opacity: .78; transition: color .14s ease, opacity .14s ease; }
+        tbody tr.drillable { cursor: pointer; }
+        tbody tr.drillable:hover .row-button, tbody tr.drillable:hover .row-drill-hint { color: var(--brand); opacity: 1; }
         .share-cell { min-width: 176px; }
         .share-line { display: flex; align-items: center; gap: 9px; }
         .bar { width: 100px; height: 6px; overflow: hidden; border-radius: 999px; background: var(--line); }
@@ -378,7 +365,6 @@
             .control-bar { position: static; align-items: flex-start; }
             .control-left, .control-right { flex-wrap: wrap; }
             .date-controls { width: 100%; }
-            .analysis-layout { grid-template-columns: 190px minmax(0, 1fr); }
             .summary-band { grid-template-columns: repeat(3, 1fr); }
             .summary-primary { grid-column: 1 / -1; border-bottom: 1px solid var(--line); }
             .summary-stat:first-of-type { border-left: 0; }
@@ -387,11 +373,8 @@
             .app-shell { padding: 18px 16px 36px; }
             .topbar, .control-bar { flex-direction: column; }
             .top-actions, .control-left, .control-right { width: 100%; justify-content: flex-start; }
-            .analysis-layout { grid-template-columns: 1fr; }
-            .path-panel { position: static; }
-            .path-list { grid-template-columns: repeat(3, 1fr); gap: 8px; }
-            .path-step { grid-template-columns: 26px minmax(0, 1fr); min-height: auto; }
-            .path-step:not(:last-child)::after { display: none; }
+            .context-row { align-items: flex-start; flex-direction: column; gap: 5px; }
+            .context-path { width: 100%; flex-wrap: wrap; }
             .summary-band { grid-template-columns: 1fr 1fr; }
             .summary-primary { grid-column: 1 / -1; }
             .summary-stat { border-top: 1px solid var(--line); border-left: 0; }
@@ -408,7 +391,7 @@
             .summary-band { grid-template-columns: 1fr; }
             .summary-stat, .summary-stat:nth-child(odd) { border-top: 1px solid var(--line); border-left: 0; }
             .filter-grid { grid-template-columns: 1fr; }
-            .chart-wrap { height: 220px; }
+            .chart-wrap { height: 190px; }
             .health-summary { flex-wrap: wrap; }
         }
     </style>
@@ -455,16 +438,13 @@
     <div id="filter-chips" class="filter-chips"></div>
 
     <section id="analysis-view" class="analysis-layout" role="tabpanel" aria-labelledby="analysis-tab">
-        <aside class="path-panel">
-            <h2>分析路径</h2>
-            <p class="path-help">点击排行项进入下一层</p>
-            <div id="path-list" class="path-list"></div>
-            <button class="button quiet small path-reset" id="reset-path" type="button">回到起点</button>
-        </aside>
-
         <div class="workspace">
             <div class="context-row">
-                <nav id="breadcrumbs" class="breadcrumbs" aria-label="当前分析路径"></nav>
+                <div class="context-path">
+                    <span class="context-label">当前范围</span>
+                    <nav id="breadcrumbs" class="breadcrumbs" aria-label="当前分析范围"></nav>
+                    <button class="button quiet small hidden" id="reset-path" type="button">重置路径</button>
+                </div>
                 <span id="query-status" class="query-status" role="status">准备查询</span>
             </div>
 
@@ -488,23 +468,6 @@
                 <div class="summary-stat">
                     <div class="summary-label">域名识别率</div>
                     <div id="summary-quality" class="summary-value num">—</div>
-                </div>
-            </section>
-
-            <section class="surface trend-panel">
-                <div class="surface-head">
-                    <div>
-                        <h2>流量趋势</h2>
-                        <p id="trend-context" class="surface-kicker">当前分析范围的小时变化</p>
-                    </div>
-                    <div class="legend" aria-label="图例">
-                        <span class="legend-upload">上传</span>
-                        <span class="legend-download">下载</span>
-                    </div>
-                </div>
-                <div class="chart-wrap">
-                    <canvas id="trend-canvas" aria-label="上传与下载流量趋势图"></canvas>
-                    <div id="chart-tooltip" class="chart-tooltip hidden"></div>
                 </div>
             </section>
 
@@ -537,7 +500,7 @@
                         <thead>
                         <tr>
                             <th class="rank-cell">排名</th>
-                            <th id="ranking-dimension-heading">项目</th>
+                            <th id="ranking-dimension-heading" class="dimension-cell">项目</th>
                             <th class="align-right">总流量</th>
                             <th class="align-right">上传</th>
                             <th class="align-right">下载</th>
@@ -556,6 +519,23 @@
                     </div>
                 </div>
             </section>
+
+            <section class="surface trend-panel">
+                <div class="surface-head">
+                    <div>
+                        <h2>流量趋势</h2>
+                        <p id="trend-context" class="surface-kicker">当前分析范围的小时变化</p>
+                    </div>
+                    <div class="legend" aria-label="图例">
+                        <span class="legend-upload">上传</span>
+                        <span class="legend-download">下载</span>
+                    </div>
+                </div>
+                <div class="chart-wrap">
+                    <canvas id="trend-canvas" aria-label="上传与下载流量趋势图"></canvas>
+                    <div id="chart-tooltip" class="chart-tooltip hidden"></div>
+                </div>
+            </section>
         </div>
     </section>
 
@@ -569,7 +549,7 @@
         </div>
         <div class="table-scroll">
             <table>
-                <thead><tr><th>状态</th><th>节点</th><th>最新小时桶</th><th>接收时间</th><th class="align-right">延迟</th><th class="align-right">待报</th><th class="align-right">重试</th><th class="align-right">范围内批次</th><th></th></tr></thead>
+                <thead><tr><th>状态</th><th>节点</th><th>最新分钟桶</th><th>接收时间</th><th class="align-right">延迟</th><th class="align-right">待报</th><th class="align-right">重试</th><th class="align-right">范围内批次</th><th></th></tr></thead>
                 <tbody id="health-rows"></tbody>
             </table>
         </div>
@@ -753,36 +733,9 @@ function setPerspective(perspective) {
 function renderStaticState() {
     $('perspective-node').setAttribute('aria-pressed', String(state.perspective === 'node'));
     $('perspective-user').setAttribute('aria-pressed', String(state.perspective === 'user'));
-    renderPath();
     renderBreadcrumbs();
     renderFilterChips();
     renderRankingHeading();
-}
-
-function renderPath() {
-    const list = $('path-list');
-    list.innerHTML = '';
-    const dimensions = pathDimensions();
-    const next = nextPathDimension();
-    dimensions.forEach((dimension, index) => {
-        const selection = state.selected[dimension];
-        const item = document.createElement('div');
-        item.className = `path-step ${selection ? 'done' : next === dimension ? 'current' : ''}`;
-        const marker = document.createElement('div');
-        marker.className = 'step-index';
-        marker.textContent = String(index + 1);
-        const content = document.createElement('div');
-        const label = document.createElement('div');
-        label.className = 'step-label';
-        label.textContent = DIMENSION_LABELS[dimension];
-        const value = document.createElement('div');
-        value.className = 'step-value';
-        value.title = selection?.label || '';
-        value.textContent = selection?.label || (next === dimension ? `选择${DIMENSION_LABELS[dimension]}` : '等待上一步');
-        content.append(label, value);
-        item.append(marker, content);
-        list.appendChild(item);
-    });
 }
 
 function renderBreadcrumbs() {
@@ -810,6 +763,7 @@ function renderBreadcrumbs() {
     });
     const crumbs = container.querySelectorAll('.crumb');
     if (crumbs.length) crumbs[crumbs.length - 1].classList.add('current');
+    $('reset-path').classList.toggle('hidden', !Object.values(state.selected).some(Boolean));
 }
 
 function renderFilterChips() {
@@ -837,13 +791,22 @@ function renderRankingHeading() {
     const user = state.selected.user?.label;
     const domain = state.selected.domain?.label;
     let title;
-    let subtitle = '选择一项进入下一层，当前条件会自动保留';
-    if (group === 'node') title = user ? `${user} 的节点流量` : '节点流量排行';
-    else if (group === 'user') title = node ? `${node} 内的用户流量` : '用户流量排行';
-    else if (group === 'domain') title = node && user ? `${user} 在 ${node} 的域名流量` : user ? `${user} 的域名流量` : '域名流量排行';
+    let subtitle;
+    if (group === 'node') {
+        title = user ? `${user} 的节点流量` : '节点流量排行';
+        subtitle = user ? '选择一个节点，查看这个用户在该节点访问的域名' : '选择一个节点，查看该节点内的用户流量';
+    }
+    else if (group === 'user') {
+        title = node ? `${node} 内的用户流量` : '用户流量排行';
+        subtitle = node ? '选择一个用户，查看该用户在这个节点访问的域名' : '选择一个用户，查看该用户的流量主要经过哪些节点';
+    }
+    else if (group === 'domain') {
+        title = node && user ? `${user} 在 ${node} 的域名流量` : user ? `${user} 的域名流量` : '域名流量排行';
+        subtitle = '选择一个域名，继续查看目的 IP、出站或协议分布';
+    }
     else {
-        title = `${domain || selectedContext()} 的${DIMENSION_LABELS[group]}分布`;
-        subtitle = '域名路径已定位，可切换维度继续观察流量去向';
+        title = `${domain || selectedContext()} 的${DIMENSION_LABELS[group]} 分布`;
+        subtitle = '已定位到具体域名，可切换维度继续观察流量去向';
     }
     $('ranking-title').textContent = title;
     $('ranking-subtitle').textContent = subtitle;
@@ -888,7 +851,10 @@ function renderRanking(ranking) {
         rank.className = 'rank-cell num';
         rank.textContent = String(item.rank);
         const name = document.createElement('td');
+        name.className = 'dimension-cell';
         const drillable = drillDimension === ranking.group_by && !['unknown','__other__'].includes(String(item.value));
+        const primary = document.createElement('div');
+        primary.className = 'row-primary';
         const label = document.createElement(drillable ? 'button' : 'span');
         label.className = drillable ? 'row-button' : 'row-label';
         label.textContent = item.label;
@@ -896,9 +862,20 @@ function renderRanking(ranking) {
         if (drillable) {
             label.type = 'button';
             label.setAttribute('aria-label', `查看${item.label}的下一层流量`);
-            label.onclick = () => selectRankingItem(ranking.group_by, item);
+            label.onclick = event => { event.stopPropagation(); selectRankingItem(ranking.group_by, item); };
         }
-        name.appendChild(label);
+        primary.appendChild(label);
+        if (drillable) {
+            const dimensions = pathDimensions();
+            const nextDimension = dimensions[dimensions.indexOf(ranking.group_by) + 1] || state.leafGroup;
+            const hint = document.createElement('span');
+            hint.className = 'row-drill-hint';
+            hint.textContent = `查看${DIMENSION_LABELS[nextDimension] || '详情'} →`;
+            primary.appendChild(hint);
+            row.classList.add('drillable');
+            row.onclick = () => selectRankingItem(ranking.group_by, item);
+        }
+        name.appendChild(primary);
         const total = numericCell(bytes(item.total_bytes));
         const upload = numericCell(bytes(item.upload_bytes));
         const download = numericCell(bytes(item.download_bytes));
@@ -918,7 +895,6 @@ function renderRanking(ranking) {
         shareLine.append(bar, percent);
         share.appendChild(shareLine);
         row.append(rank, name, total, upload, download, connections, share);
-        if (drillable) row.onclick = event => { if (event.target !== label) selectRankingItem(ranking.group_by, item); };
         body.appendChild(row);
     });
     const start = ranking.total ? (state.page - 1) * PAGE_SIZE + 1 : 0;

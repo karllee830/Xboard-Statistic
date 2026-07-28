@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xboard-statistic.local/schema/report-v2.schema.json",
+  "title": "Xboard detailed traffic report v2",
+  "description": "Immutable one-minute detailed traffic batch",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "batch_id", "bucket_start", "bucket_end", "records", "quality"],
+  "properties": {
+    "schema_version": { "const": 2 },
+    "batch_id": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "bucket_start": { "$ref": "#/$defs/utcMinute" },
+    "bucket_end": { "$ref": "#/$defs/utcMinute" },
+    "node_version": { "type": "string", "maxLength": 64 },
+    "collector_version": { "type": "string", "maxLength": 64 },
+    "records": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/record" }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "collapsed_dimensions": { "$ref": "#/$defs/nonNegativeInteger" },
+        "collapsed_bytes": { "$ref": "#/$defs/nonNegativeInteger" },
+        "unknown_domain_bytes": { "$ref": "#/$defs/nonNegativeInteger" },
+        "unknown_destination_ip_bytes": { "$ref": "#/$defs/nonNegativeInteger" }
+      }
+    }
+  },
+  "$defs": {
+    "utcMinute": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:00Z$"
+    },
+    "nonNegativeInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9223372036854775807
+    },
+    "dimensionToken": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^(?:[a-z0-9][a-z0-9._-]*|__other__)$"
+    },
+    "nullableDimension": {
+      "type": ["string", "null"],
+      "maxLength": 253
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "user_id", "source_ip", "destination_ip", "exact_domain", "registrable_domain",
+        "network", "application_protocol", "inbound_type", "outbound_tag", "outbound_type",
+        "destination_port", "upload_bytes", "download_bytes", "connection_count", "active_seconds"
+      ],
+      "properties": {
+        "user_id": { "type": "integer", "minimum": 1, "maximum": 9223372036854775807 },
+        "source_ip": { "type": ["string", "null"], "maxLength": 45 },
+        "destination_ip": { "type": ["string", "null"], "maxLength": 45 },
+        "exact_domain": { "$ref": "#/$defs/nullableDimension" },
+        "registrable_domain": { "$ref": "#/$defs/nullableDimension" },
+        "network": { "enum": ["tcp", "udp"] },
+        "application_protocol": { "$ref": "#/$defs/dimensionToken" },
+        "inbound_type": { "$ref": "#/$defs/dimensionToken" },
+        "outbound_tag": { "$ref": "#/$defs/dimensionToken" },
+        "outbound_type": { "$ref": "#/$defs/dimensionToken" },
+        "destination_port": { "type": ["integer", "null"], "minimum": 0, "maximum": 65535 },
+        "upload_bytes": { "$ref": "#/$defs/nonNegativeInteger" },
+        "download_bytes": { "$ref": "#/$defs/nonNegativeInteger" },
+        "connection_count": { "$ref": "#/$defs/nonNegativeInteger" },
+        "active_seconds": { "$ref": "#/$defs/nonNegativeInteger" }
+      }
+    }
+  }
+}

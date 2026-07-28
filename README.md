@@ -1,6 +1,6 @@
 # Xboard Statistics
 
-Xboard Statistics 是面向 Xboard 与 Xboard-Node Sing-box 内核的小时级多维流量统计插件。
+Xboard Statistics 是面向 Xboard 与 Xboard-Node Sing-box 内核的分钟级多维流量统计插件。
 
 当前版本支持节点、用户、域名、来源 IP、目的 IP、网络、应用协议、入站、出站、目标端口、国家和 ASN 的排行、趋势、组合筛选及交叉下钻。User-Agent、URL 路径、查询参数、Cookie、正文和数据包内容均不会采集。
 
@@ -59,7 +59,7 @@ GET /api/v2/{secure_path}/plugin/xboard-statistic/traffic
 GET /api/v2/{secure_path}/plugin/xboard-statistic/ranking/{group}
 ```
 
-`health` 返回各节点最新小时桶、接收延迟、节点端待报队列和重试次数。`traffic` 支持 `from`、`to`、`group_by`、`node_id`、`user_id`、`domain`、`source_ip`、`destination_ip`、`network`、`application_protocol`、`inbound_type`、`outbound`、`destination_port`、来源/目的国家和 ASN 等参数。查询范围上限为 90 天，返回行数有硬限制。
+`health` 返回各节点最新分钟桶、接收延迟、节点端待报队列和重试次数。`traffic` 支持 `from`、`to`、`group_by`、`node_id`、`user_id`、`domain`、`source_ip`、`destination_ip`、`network`、`application_protocol`、`inbound_type`、`outbound`、`destination_port`、来源/目的国家和 ASN 等参数。查询范围上限为 90 天，返回行数有硬限制；趋势仍按小时聚合，避免长时间范围产生过密折线。
 
 ## 节点配置
 
@@ -72,12 +72,12 @@ statistics:
   max_hourly_dimensions: 200000
   max_domains_per_user_hour: 5000
   max_destination_ips_per_user_hour: 10000
-  max_pending_batches: 168
+  max_pending_batches: 10080
   request_timeout: 30
   disable_sniff: false
 ```
 
-详细统计按 UTC 小时生成不可变 gzip 批次。失败批次原子持久化并指数退避重试；4xx 永久拒绝批次移到 `rejected` 目录。该链路独立于原计费上报。
+详细统计按 UTC 分钟生成 schema v2 不可变 gzip 批次，通常在下一次分钟检查时上传；插件继续兼容旧节点的 schema v1 小时批次。失败批次原子持久化并指数退避重试；4xx 永久拒绝批次移到 `rejected` 目录。该链路独立于原计费上报。
 
 ## 日汇总、清理和 GeoIP
 
@@ -89,7 +89,7 @@ php artisan xboard-statistic:cleanup --dry-run
 php artisan xboard-statistic:enrich-ips
 ```
 
-日汇总包含节点×用户、节点×域名、用户×节点、用户×域名、来源 IP×用户、目的 IP×域名。小时事实、日汇总和批次元数据分别按插件设置保留。
+日汇总包含节点×用户、节点×域名、用户×节点、用户×域名、来源 IP×用户、目的 IP×域名。分钟事实、日汇总和批次元数据分别按插件设置保留。
 
 国家与 ASN 只使用面板服务器本地 MaxMind MMDB，不进行在线 IP 查询。需要在 Xboard 根目录安装 `geoip2/geoip2`，然后在插件设置中填写 Country 和 ASN MMDB 路径；未配置时相关维度显示为 `unknown`。
 
@@ -97,4 +97,4 @@ php artisan xboard-statistic:enrich-ips
 
 访问域名和来源 IP 属于敏感数据。插件查询仅允许管理员，查询进入 Xboard 请求日志；建议设置最短可用保留期，并按需启用“页面隐藏来源 IP”。该开关将 IPv4 显示为 `/24`、IPv6 显示为 `/48`，底层数据仍保留用于统计。
 
-版本化协议定义见 `resources/schema/report-v1.schema.json`。Schema 明确禁止额外字段，避免节点静默增加 User-Agent 等未授权维度。
+版本化协议定义见 `resources/schema/report-v1.schema.json` 与 `resources/schema/report-v2.schema.json`。Schema 明确禁止额外字段，避免节点静默增加 User-Agent 等未授权维度。

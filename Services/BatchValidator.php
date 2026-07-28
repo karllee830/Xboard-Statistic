@@ -38,9 +38,9 @@ final class BatchValidator
             ['schema_version', 'batch_id', 'bucket_start', 'bucket_end', 'records', 'quality'],
             '批次',
         );
-        $schemaVersion = $this->requiredInt($payload, 'schema_version', 1, 1);
-        if ($schemaVersion !== 1) {
-            throw new IngestException('unsupported_schema_version', '仅支持 schema_version=1', 422);
+        $schemaVersion = $this->requiredInt($payload, 'schema_version', 1, PHP_INT_MAX);
+        if (!in_array($schemaVersion, [1, 2], true)) {
+            throw new IngestException('unsupported_schema_version', '仅支持 schema_version=1 或 2', 422);
         }
 
         $batchId = strtolower($this->requiredString($payload, 'batch_id', 36));
@@ -48,10 +48,12 @@ final class BatchValidator
             throw new IngestException('invalid_batch_id', 'batch_id 必须是有效 UUID', 422);
         }
 
-        $bucketStart = $this->utcHour($payload['bucket_start'] ?? null, 'bucket_start');
-        $bucketEnd = $this->utcHour($payload['bucket_end'] ?? null, 'bucket_end');
-        if ($bucketEnd->getTimestamp() - $bucketStart->getTimestamp() !== 3600) {
-            throw new IngestException('invalid_bucket_range', '统计批次必须恰好覆盖一个小时', 422);
+        $bucketSeconds = $schemaVersion === 1 ? 3600 : 60;
+        $bucketStart = $this->utcBoundary($payload['bucket_start'] ?? null, 'bucket_start', $bucketSeconds);
+        $bucketEnd = $this->utcBoundary($payload['bucket_end'] ?? null, 'bucket_end', $bucketSeconds);
+        if ($bucketEnd->getTimestamp() - $bucketStart->getTimestamp() !== $bucketSeconds) {
+            $label = $schemaVersion === 1 ? '一个小时' : '一分钟';
+            throw new IngestException('invalid_bucket_range', "统计批次必须恰好覆盖{$label}", 422);
         }
 
         $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
@@ -183,7 +185,7 @@ final class BatchValidator
         ];
     }
 
-    private function utcHour(mixed $value, string $field): DateTimeImmutable
+    private function utcBoundary(mixed $value, string $field, int $bucketSeconds): DateTimeImmutable
     {
         if (!is_string($value) || $value === '') {
             throw new IngestException('missing_' . $field, "{$field} 是必填字段", 422);
@@ -193,8 +195,11 @@ final class BatchValidator
         } catch (Throwable) {
             throw new IngestException('invalid_' . $field, "{$field} 不是有效时间", 422);
         }
-        if ($date->getOffset() !== 0 || $date->format('i:s.u') !== '00:00.000000') {
-            throw new IngestException('invalid_' . $field, "{$field} 必须是 UTC 整点", 422);
+        $boundary = $bucketSeconds === 3600 ? 'i:s.u' : 's.u';
+        $expected = $bucketSeconds === 3600 ? '00:00.000000' : '00.000000';
+        if ($date->getOffset() !== 0 || $date->format($boundary) !== $expected) {
+            $label = $bucketSeconds === 3600 ? 'UTC 整点' : 'UTC 整分钟';
+            throw new IngestException('invalid_' . $field, "{$field} 必须是{$label}", 422);
         }
         return $date->setTimezone(new DateTimeZone('UTC'));
     }

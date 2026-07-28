@@ -35,7 +35,7 @@ final class ReportIngestService
             );
         }
         if ($existingBucket = $this->findBucket($nodeId, $batch['bucket_start']->format('Y-m-d H:i:s'))) {
-            throw new IngestException('bucket_conflict', '该节点的小时桶已使用其他批次上报', 409, [
+            throw new IngestException('bucket_conflict', '该节点的时间桶已使用其他批次上报', 409, [
                 'existing_batch_id' => $existingBucket->batch_id,
             ]);
         }
@@ -95,7 +95,7 @@ final class ReportIngestService
                 );
             }
             if ($existingBucket = $this->findBucket($nodeId, $batch['bucket_start']->format('Y-m-d H:i:s'))) {
-                throw new IngestException('bucket_conflict', '该节点的小时桶已使用其他批次上报', 409, [
+                throw new IngestException('bucket_conflict', '该节点的时间桶已使用其他批次上报', 409, [
                     'existing_batch_id' => $existingBucket->batch_id,
                 ]);
             }

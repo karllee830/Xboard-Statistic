@@ -103,6 +103,7 @@ final class TrafficQueryService
             'unknown_destination_ip_bytes' => 0,
         ];
         $lateBatchCount = 0;
+        $coveredBucketMinutes = 0;
         $latestByNode = [];
         foreach ($batchRows as $batch) {
             $values = json_decode((string) ($batch->quality ?? '{}'), true);
@@ -113,7 +114,12 @@ final class TrafficQueryService
             }
             try {
                 $bucketEnd = new DateTimeImmutable((string) $batch->bucket_end, new DateTimeZone('UTC'));
+                $bucketStart = new DateTimeImmutable((string) $batch->bucket_start, new DateTimeZone('UTC'));
                 $receivedAt = new DateTimeImmutable((string) $batch->received_at, new DateTimeZone('UTC'));
+                $coveredBucketMinutes += max(0, intdiv(
+                    $bucketEnd->getTimestamp() - $bucketStart->getTimestamp(),
+                    60,
+                ));
                 if ($receivedAt->getTimestamp() - $bucketEnd->getTimestamp() > 600) {
                     $lateBatchCount++;
                 }
@@ -138,7 +144,7 @@ final class TrafficQueryService
         $total = $this->decimalAdd($upload, $download);
         $totalFloat = (float) $total;
         $nodeCount = (int) ($totals->node_count ?? 0);
-        $hours = (int) ceil(($to->getTimestamp() - $from->getTimestamp()) / 3600);
+        $minutes = (int) ceil(($to->getTimestamp() - $from->getTimestamp()) / 60);
         return [
             'from' => $from->format('Y-m-d\TH:i:s\Z'),
             'to' => $to->format('Y-m-d\TH:i:s\Z'),
@@ -155,7 +161,7 @@ final class TrafficQueryService
             'batch_count' => $batchCount,
             'last_received_at' => $lastBatch,
             'late_batch_count' => $lateBatchCount,
-            'missing_bucket_estimate' => max(0, $nodeCount * $hours - $batchCount),
+            'missing_bucket_estimate' => max(0, $nodeCount * $minutes - $coveredBucketMinutes),
             'reported_pending_batches' => $reportedPending,
             'maximum_retry_attempt' => $maximumRetryAttempt,
             'quality' => $quality + [
@@ -401,7 +407,10 @@ final class TrafficQueryService
     private function groupColumns(string $groupBy): array
     {
         return match ($groupBy) {
-            'time' => [['traffic.bucket_start AS group_time'], ['traffic.bucket_start']],
+            'time' => [
+                [DB::raw($this->timeGroupExpression() . ' AS group_time')],
+                [DB::raw($this->timeGroupExpression())],
+            ],
             'node' => [['traffic.node_id AS group_id'], ['traffic.node_id']],
             'user' => [['traffic.user_id AS group_id'], ['traffic.user_id']],
             'domain' => [['traffic.domain_id AS group_id'], ['traffic.domain_id']],
@@ -423,6 +432,16 @@ final class TrafficQueryService
             'source_asn' => [[DB::raw($this->geoExpression('source', 'asn') . ' AS group_value')], [DB::raw($this->geoExpression('source', 'asn'))]],
             'destination_asn' => [[DB::raw($this->geoExpression('destination', 'asn') . ' AS group_value')], [DB::raw($this->geoExpression('destination', 'asn'))]],
             default => throw new InvalidArgumentException('不支持的 group_by'),
+        };
+    }
+
+    private function timeGroupExpression(): string
+    {
+        return match (DB::connection()->getDriverName()) {
+            'pgsql' => "DATE_TRUNC('hour', traffic.bucket_start)",
+            'sqlite' => "STRFTIME('%Y-%m-%d %H:00:00', traffic.bucket_start)",
+            'sqlsrv' => 'DATEADD(hour, DATEDIFF(hour, 0, traffic.bucket_start), 0)',
+            default => "DATE_FORMAT(traffic.bucket_start, '%Y-%m-%d %H:00:00')",
         };
     }
 
