@@ -13,6 +13,14 @@ use Plugin\XboardStatistic\Support\IpAddress;
 
 final class TrafficController extends PluginController
 {
+    public function authCheck(): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => ['authenticated' => true],
+        ]);
+    }
+
     public function traffic(Request $request, TrafficQueryService $service): JsonResponse
     {
         return $this->respond(fn (): array => $this->maskSourceIps($service->query($request)));

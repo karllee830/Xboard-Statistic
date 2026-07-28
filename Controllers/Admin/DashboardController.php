@@ -19,6 +19,8 @@ final class DashboardController extends PluginController
         return view('XboardStatistic::dashboard', [
             'apiBase' => url('/api/v2/' . $securePath . '/plugin/xboard-statistic'),
             'adminUrl' => url('/' . $securePath),
+            'dashboardUrl' => url('/' . $securePath . '/xboard-statistic'),
+            'loginUrl' => url('/' . $securePath) . '#/sign-in',
         ]);
     }
 }

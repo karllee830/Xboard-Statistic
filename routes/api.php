@@ -18,6 +18,7 @@ $adminPath = admin_setting(
 Route::prefix('/api/v2/' . $adminPath . '/plugin/xboard-statistic')
     ->middleware(['admin', 'log'])
     ->group(function (): void {
+        Route::get('/auth-check', [TrafficController::class, 'authCheck']);
         Route::get('/overview', [TrafficController::class, 'overview']);
         Route::get('/health', [TrafficController::class, 'health']);
         Route::get('/traffic', [TrafficController::class, 'traffic']);
