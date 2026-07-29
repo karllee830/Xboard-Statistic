@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace Plugin\XboardStatistic\Services;
 
 use DateTimeImmutable;
-use DateTimeZone;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use Plugin\XboardStatistic\Support\IpAddress;
+use Plugin\XboardStatistic\Support\UtcTime;
 use Throwable;
 
 final class TrafficQueryService
@@ -62,8 +62,8 @@ final class TrafficQueryService
         $rows = $query->orderBy($sortColumn, $direction)->offset($offset)->limit($limit)->get();
 
         return [
-            'from' => $from->format('Y-m-d\TH:i:s\Z'),
-            'to' => $to->format('Y-m-d\TH:i:s\Z'),
+            'from' => UtcTime::iso($from),
+            'to' => UtcTime::iso($to),
             'group_by' => $groupBy,
             'grand_total_bytes' => $grandTotal,
             'total' => $groupCount,
@@ -86,12 +86,12 @@ final class TrafficQueryService
             ->selectRaw('COUNT(DISTINCT traffic.destination_ip_id) AS destination_ip_count')
             ->first();
 
-        $lastBatch = DB::table('xbs_report_batches')->max('received_at');
+        $lastBatch = DB::table('xbs_report_batches')->max('received_at_unix');
         $batchRows = DB::table('xbs_report_batches')
-            ->where('bucket_start', '>=', $from->format('Y-m-d H:i:s'))
-            ->where('bucket_start', '<', $to->format('Y-m-d H:i:s'))
+            ->where('bucket_start_unix', '>=', $from->getTimestamp())
+            ->where('bucket_start_unix', '<', $to->getTimestamp())
             ->get([
-                'node_id', 'bucket_start', 'bucket_end', 'received_at', 'quality',
+                'node_id', 'bucket_start_unix', 'bucket_end_unix', 'received_at_unix', 'quality',
                 'reported_pending_batches', 'reported_retry_attempt',
             ]);
         $batchCount = $batchRows->count();
@@ -113,14 +113,11 @@ final class TrafficQueryService
                 }
             }
             try {
-                $bucketEnd = new DateTimeImmutable((string) $batch->bucket_end, new DateTimeZone('UTC'));
-                $bucketStart = new DateTimeImmutable((string) $batch->bucket_start, new DateTimeZone('UTC'));
-                $receivedAt = new DateTimeImmutable((string) $batch->received_at, new DateTimeZone('UTC'));
                 $coveredBucketMinutes += max(0, intdiv(
-                    $bucketEnd->getTimestamp() - $bucketStart->getTimestamp(),
+                    (int) $batch->bucket_end_unix - (int) $batch->bucket_start_unix,
                     60,
                 ));
-                if ($receivedAt->getTimestamp() - $bucketEnd->getTimestamp() > 600) {
+                if ((int) $batch->received_at_unix - (int) $batch->bucket_end_unix > 600) {
                     $lateBatchCount++;
                 }
             } catch (Throwable) {
@@ -128,7 +125,7 @@ final class TrafficQueryService
             }
             $nodeId = (int) $batch->node_id;
             if (!isset($latestByNode[$nodeId])
-                || (string) $batch->received_at > (string) $latestByNode[$nodeId]->received_at) {
+                || (int) $batch->received_at_unix > (int) $latestByNode[$nodeId]->received_at_unix) {
                 $latestByNode[$nodeId] = $batch;
             }
         }
@@ -146,8 +143,8 @@ final class TrafficQueryService
         $nodeCount = (int) ($totals->node_count ?? 0);
         $minutes = (int) ceil(($to->getTimestamp() - $from->getTimestamp()) / 60);
         return [
-            'from' => $from->format('Y-m-d\TH:i:s\Z'),
-            'to' => $to->format('Y-m-d\TH:i:s\Z'),
+            'from' => UtcTime::iso($from),
+            'to' => UtcTime::iso($to),
             'upload_bytes' => $upload,
             'download_bytes' => $download,
             'total_bytes' => $total,
@@ -159,7 +156,9 @@ final class TrafficQueryService
             'source_ip_count' => (int) ($totals->source_ip_count ?? 0),
             'destination_ip_count' => (int) ($totals->destination_ip_count ?? 0),
             'batch_count' => $batchCount,
-            'last_received_at' => $lastBatch,
+            'last_received_at' => $lastBatch === null
+                ? null
+                : UtcTime::iso(UtcTime::fromUnix((int) $lastBatch)),
             'late_batch_count' => $lateBatchCount,
             'missing_bucket_estimate' => max(0, $nodeCount * $minutes - $coveredBucketMinutes),
             'reported_pending_batches' => $reportedPending,
@@ -182,12 +181,12 @@ final class TrafficQueryService
     {
         [$from, $to] = $this->timeRange($request);
         $rows = DB::table('xbs_report_batches')
-            ->where('bucket_start', '>=', $from->format('Y-m-d H:i:s'))
-            ->where('bucket_start', '<', $to->format('Y-m-d H:i:s'))
+            ->where('bucket_start_unix', '>=', $from->getTimestamp())
+            ->where('bucket_start_unix', '<', $to->getTimestamp())
             ->orderBy('node_id')
-            ->orderByDesc('received_at')
+            ->orderByDesc('received_at_unix')
             ->get([
-                'node_id', 'bucket_start', 'bucket_end', 'received_at', 'quality',
+                'node_id', 'bucket_start_unix', 'bucket_end_unix', 'received_at_unix', 'quality',
                 'reported_pending_batches', 'reported_retry_attempt',
             ]);
 
@@ -203,8 +202,7 @@ final class TrafficQueryService
         foreach ($latest as $nodeId => $row) {
             $delay = null;
             try {
-                $delay = max(0, (new DateTimeImmutable((string) $row->received_at))->getTimestamp()
-                    - (new DateTimeImmutable((string) $row->bucket_end))->getTimestamp());
+                $delay = max(0, (int) $row->received_at_unix - (int) $row->bucket_end_unix);
             } catch (Throwable) {
                 // Preserve the row and expose an unknown delay.
             }
@@ -212,8 +210,8 @@ final class TrafficQueryService
             $items[] = [
                 'node_id' => $nodeId,
                 'node_name' => $labels[$nodeId]['value'] ?? ('已删除 #' . $nodeId),
-                'last_bucket_start' => (string) $row->bucket_start,
-                'last_received_at' => (string) $row->received_at,
+                'last_bucket_start' => UtcTime::iso(UtcTime::fromUnix((int) $row->bucket_start_unix)),
+                'last_received_at' => UtcTime::iso(UtcTime::fromUnix((int) $row->received_at_unix)),
                 'report_delay_seconds' => $delay,
                 'reported_pending_batches' => isset($row->reported_pending_batches)
                     ? (int) $row->reported_pending_batches
@@ -229,8 +227,8 @@ final class TrafficQueryService
             <=> ($left['reported_pending_batches'] ?? -1));
 
         return [
-            'from' => $from->format('Y-m-d\TH:i:s\Z'),
-            'to' => $to->format('Y-m-d\TH:i:s\Z'),
+            'from' => UtcTime::iso($from),
+            'to' => UtcTime::iso($to),
             'items' => $items,
         ];
     }
@@ -238,8 +236,8 @@ final class TrafficQueryService
     private function baseQuery(Request $request, DateTimeImmutable $from, DateTimeImmutable $to, ?string $groupBy): Builder
     {
         $query = DB::table('xbs_traffic_hourly as traffic')
-            ->where('traffic.bucket_start', '>=', $from->format('Y-m-d H:i:s'))
-            ->where('traffic.bucket_start', '<', $to->format('Y-m-d H:i:s'));
+            ->where('traffic.bucket_start_unix', '>=', $from->getTimestamp())
+            ->where('traffic.bucket_start_unix', '<', $to->getTimestamp());
 
         if (in_array($groupBy, ['source_country', 'source_asn'], true)
             || $request->query->has('source_country') || $request->query->has('source_asn')) {
@@ -408,7 +406,7 @@ final class TrafficQueryService
     {
         return match ($groupBy) {
             'time' => [
-                [DB::raw($this->timeGroupExpression() . ' AS group_time')],
+                [DB::raw($this->timeGroupExpression() . ' AS group_time_unix')],
                 [DB::raw($this->timeGroupExpression())],
             ],
             'node' => [['traffic.node_id AS group_id'], ['traffic.node_id']],
@@ -438,10 +436,9 @@ final class TrafficQueryService
     private function timeGroupExpression(): string
     {
         return match (DB::connection()->getDriverName()) {
-            'pgsql' => "DATE_TRUNC('hour', traffic.bucket_start)",
-            'sqlite' => "STRFTIME('%Y-%m-%d %H:00:00', traffic.bucket_start)",
-            'sqlsrv' => 'DATEADD(hour, DATEDIFF(hour, 0, traffic.bucket_start), 0)',
-            default => "DATE_FORMAT(traffic.bucket_start, '%Y-%m-%d %H:00:00')",
+            'pgsql', 'sqlsrv' => '(traffic.bucket_start_unix / 3600) * 3600',
+            'sqlite' => 'CAST(traffic.bucket_start_unix / 3600 AS INTEGER) * 3600',
+            default => 'FLOOR(traffic.bucket_start_unix / 3600) * 3600',
         };
     }
 
@@ -474,7 +471,7 @@ final class TrafficQueryService
         return array_map(function (object $row) use ($groupBy, $grandTotal, $labels, &$rank): array {
             $rank++;
             $value = match ($groupBy) {
-                'time' => (string) $row->group_time,
+                'time' => UtcTime::iso(UtcTime::fromUnix((int) $row->group_time_unix)),
                 'node', 'user' => (int) $row->group_id,
                 'domain', 'outbound' => $row->group_id === null ? 'unknown' : ($labels[(int) $row->group_id]['value'] ?? 'unknown'),
                 'source_ip', 'destination_ip' => $this->ipGroupValue($row, $labels),
@@ -485,7 +482,7 @@ final class TrafficQueryService
                 default => (string) $value,
             };
             $total = (string) $row->total_bytes;
-            return [
+            $item = [
                 'id' => $groupBy . ':' . $rank,
                 'rank' => $rank,
                 'value' => $value,
@@ -497,6 +494,14 @@ final class TrafficQueryService
                 'active_seconds' => (int) $row->active_seconds,
                 'percentage' => (float) $grandTotal > 0 ? round((float) $total / (float) $grandTotal * 100, 4) : 0.0,
             ];
+            if (in_array($groupBy, ['source_ip', 'destination_ip'], true)
+                && (int) ($row->group_state ?? 0) === 1) {
+                $geo = $labels[(int) $row->group_id] ?? [];
+                $item['country_code'] = $geo['country_code'] ?? null;
+                $item['asn'] = $geo['asn'] ?? null;
+                $item['asn_organization'] = $geo['asn_organization'] ?? null;
+            }
+            return $item;
         }, $rows);
     }
 
@@ -525,8 +530,15 @@ final class TrafficQueryService
         if ($ids === []) {
             return [];
         }
-        return DB::table('xbs_ip_addresses')->whereIn('id', $ids)->get(['id', 'address'])->mapWithKeys(
-            static fn (object $row): array => [(int) $row->id => ['value' => IpAddress::display($row->address)]],
+        return DB::table('xbs_ip_addresses')->whereIn('id', $ids)->get([
+            'id', 'address', 'country_code', 'asn', 'asn_organization',
+        ])->mapWithKeys(
+            static fn (object $row): array => [(int) $row->id => [
+                'value' => IpAddress::display($row->address),
+                'country_code' => $row->country_code === null ? null : (string) $row->country_code,
+                'asn' => $row->asn === null ? null : (int) $row->asn,
+                'asn_organization' => $row->asn_organization === null ? null : (string) $row->asn_organization,
+            ]],
         )->all();
     }
 
@@ -551,16 +563,17 @@ final class TrafficQueryService
 
     private function timeRange(Request $request): array
     {
-        $utc = new DateTimeZone('UTC');
-        $now = new DateTimeImmutable('now', $utc);
+        $now = UtcTime::now();
         try {
-            $from = $request->query->has('from') ? new DateTimeImmutable((string) $request->query('from')) : $now->modify('-24 hours');
-            $to = $request->query->has('to') ? new DateTimeImmutable((string) $request->query('to')) : $now;
+            $from = $request->query->has('from')
+                ? UtcTime::parseApi((string) $request->query('from'))
+                : $now->modify('-24 hours');
+            $to = $request->query->has('to')
+                ? UtcTime::parseApi((string) $request->query('to'))
+                : $now;
         } catch (Throwable) {
-            throw new InvalidArgumentException('from/to 不是有效时间');
+            throw new InvalidArgumentException('from/to 必须是包含时区的 ISO 8601 时间');
         }
-        $from = $from->setTimezone($utc);
-        $to = $to->setTimezone($utc);
         if ($to <= $from) {
             throw new InvalidArgumentException('to 必须晚于 from');
         }

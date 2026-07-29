@@ -16,7 +16,9 @@ return new class extends Migration
             $table->uuid('batch_id');
             $table->unsignedSmallInteger('schema_version');
             $table->timestamp('bucket_start');
+            $table->unsignedBigInteger('bucket_start_unix');
             $table->timestamp('bucket_end');
+            $table->unsignedBigInteger('bucket_end_unix');
             $table->char('checksum', 64);
             $table->unsignedInteger('record_count');
             $table->string('status', 16)->default('accepted');
@@ -24,6 +26,7 @@ return new class extends Migration
             $table->string('collector_version', 64)->nullable();
             $table->json('quality')->nullable();
             $table->timestamp('received_at');
+            $table->unsignedBigInteger('received_at_unix');
             $table->timestamps();
 
             $table->unique(['node_id', 'batch_id'], 'xbs_batches_node_batch_unique');
@@ -48,6 +51,8 @@ return new class extends Migration
             $table->string('country_code', 2)->nullable();
             $table->unsignedBigInteger('asn')->nullable();
             $table->string('asn_organization', 255)->nullable();
+            $table->string('country_database_version', 32)->nullable();
+            $table->string('asn_database_version', 32)->nullable();
             $table->timestamps();
 
             $table->unique('address', 'xbs_ip_addresses_address_unique');
@@ -67,6 +72,7 @@ return new class extends Migration
             $table->bigIncrements('id');
             $table->unsignedBigInteger('batch_id');
             $table->timestamp('bucket_start');
+            $table->unsignedBigInteger('bucket_start_unix');
             $table->unsignedBigInteger('node_id');
             $table->unsignedBigInteger('user_id');
             $table->unsignedBigInteger('source_ip_id')->nullable();

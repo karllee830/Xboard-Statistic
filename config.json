@@ -1,7 +1,7 @@
 {
     "name": "Xboard Statistics",
     "code": "xboard_statistic",
-    "version": "0.2.4",
+    "version": "0.2.7",
     "description": "Sing-box 节点多维流量统计、排行与交叉下钻插件",
     "author": "karllee830",
     "type": "feature",
@@ -48,14 +48,14 @@
         "geoip_country_mmdb": {
             "type": "string",
             "default": "",
-            "label": "GeoIP Country MMDB 路径",
-            "description": "插件服务器本地 MaxMind GeoLite2/GeoIP2 Country 数据库；留空不派生国家"
+            "label": "Country MMDB 自定义路径（可选）",
+            "description": "留空时插件自动下载并更新 DB-IP Country Lite；仅在需要覆盖托管数据库时填写本地 MMDB"
         },
         "geoip_asn_mmdb": {
             "type": "string",
             "default": "",
-            "label": "GeoIP ASN MMDB 路径",
-            "description": "插件服务器本地 MaxMind GeoLite2/GeoIP2 ASN 数据库；留空不派生 ASN"
+            "label": "ASN MMDB 自定义路径（可选）",
+            "description": "留空时插件自动下载并更新 DB-IP ASN Lite；仅在需要覆盖托管数据库时填写本地 MMDB"
         }
     },
     "admin_menus": [

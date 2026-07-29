@@ -7,6 +7,7 @@ namespace Plugin\XboardStatistic\Services;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Plugin\XboardStatistic\Exceptions\IngestException;
+use Plugin\XboardStatistic\Support\UtcTime;
 use Throwable;
 
 final class ReportIngestService
@@ -34,7 +35,8 @@ final class ReportIngestService
                 $reportedRetryAttempt,
             );
         }
-        if ($existingBucket = $this->findBucket($nodeId, $batch['bucket_start']->format('Y-m-d H:i:s'))) {
+        $bucketStartUnix = $batch['bucket_start']->getTimestamp();
+        if ($existingBucket = $this->findBucket($nodeId, $bucketStartUnix)) {
             throw new IngestException('bucket_conflict', '该节点的时间桶已使用其他批次上报', 409, [
                 'existing_batch_id' => $existingBucket->batch_id,
             ]);
@@ -42,13 +44,18 @@ final class ReportIngestService
 
         try {
             return DB::transaction(function () use ($nodeId, $checksum, $batch, $reportedPendingBatches, $reportedRetryAttempt): array {
-                $now = now();
+                $receivedAt = UtcTime::now();
+                $now = UtcTime::database($receivedAt);
+                $bucketStartUnix = $batch['bucket_start']->getTimestamp();
+                $bucketEndUnix = $batch['bucket_end']->getTimestamp();
                 $batchRowId = DB::table('xbs_report_batches')->insertGetId([
                     'node_id' => $nodeId,
                     'batch_id' => $batch['batch_id'],
                     'schema_version' => $batch['schema_version'],
-                    'bucket_start' => $batch['bucket_start']->format('Y-m-d H:i:s'),
-                    'bucket_end' => $batch['bucket_end']->format('Y-m-d H:i:s'),
+                    'bucket_start' => UtcTime::database($batch['bucket_start']),
+                    'bucket_start_unix' => $bucketStartUnix,
+                    'bucket_end' => UtcTime::database($batch['bucket_end']),
+                    'bucket_end_unix' => $bucketEndUnix,
                     'checksum' => $checksum,
                     'record_count' => count($batch['records']),
                     'status' => 'accepted',
@@ -58,6 +65,7 @@ final class ReportIngestService
                     'reported_pending_batches' => $reportedPendingBatches,
                     'reported_retry_attempt' => $reportedRetryAttempt,
                     'received_at' => $now,
+                    'received_at_unix' => $receivedAt->getTimestamp(),
                     'created_at' => $now,
                     'updated_at' => $now,
                 ]);
@@ -66,7 +74,8 @@ final class ReportIngestService
                 $facts = $this->buildFacts(
                     $batchRowId,
                     $nodeId,
-                    $batch['bucket_start']->format('Y-m-d H:i:s'),
+                    UtcTime::database($batch['bucket_start']),
+                    $bucketStartUnix,
                     $batch['records'],
                     $dimensions,
                     $now,
@@ -79,7 +88,7 @@ final class ReportIngestService
                 return [
                     'result' => 'accepted',
                     'batch_id' => $batch['batch_id'],
-                    'bucket_start' => $batch['bucket_start']->format('Y-m-d\TH:i:s\Z'),
+                    'bucket_start' => UtcTime::iso($batch['bucket_start']),
                     'record_count' => count($batch['records']),
                     'stored_dimensions' => count($facts),
                 ];
@@ -94,7 +103,7 @@ final class ReportIngestService
                     $reportedRetryAttempt,
                 );
             }
-            if ($existingBucket = $this->findBucket($nodeId, $batch['bucket_start']->format('Y-m-d H:i:s'))) {
+            if ($existingBucket = $this->findBucket($nodeId, $bucketStartUnix)) {
                 throw new IngestException('bucket_conflict', '该节点的时间桶已使用其他批次上报', 409, [
                     'existing_batch_id' => $existingBucket->batch_id,
                 ]);
@@ -218,6 +227,7 @@ final class ReportIngestService
         int $batchRowId,
         int $nodeId,
         string $bucketStart,
+        int $bucketStartUnix,
         array $records,
         array $dimensions,
         mixed $now,
@@ -271,6 +281,7 @@ final class ReportIngestService
                 $facts[$hash] = [
                     'batch_id' => $batchRowId,
                     'bucket_start' => $bucketStart,
+                    'bucket_start_unix' => $bucketStartUnix,
                     'node_id' => $nodeId,
                     'user_id' => $record['user_id'],
                     'source_ip_id' => $sourceIpId,
@@ -317,11 +328,11 @@ final class ReportIngestService
             ->first();
     }
 
-    private function findBucket(int $nodeId, string $bucketStart): ?object
+    private function findBucket(int $nodeId, int $bucketStartUnix): ?object
     {
         return DB::table('xbs_report_batches')
             ->where('node_id', $nodeId)
-            ->where('bucket_start', $bucketStart)
+            ->where('bucket_start_unix', $bucketStartUnix)
             ->first();
     }
 
@@ -347,14 +358,14 @@ final class ReportIngestService
             );
         }
         if ($health !== []) {
-            $health['updated_at'] = now();
+            $health['updated_at'] = UtcTime::database(UtcTime::now());
             DB::table('xbs_report_batches')->where('id', $existing->id)->update($health);
         }
 
         return [
             'result' => 'duplicate',
             'batch_id' => $existing->batch_id,
-            'bucket_start' => (string) $existing->bucket_start,
+            'bucket_start' => UtcTime::iso(UtcTime::fromUnix((int) $existing->bucket_start_unix)),
             'record_count' => (int) $existing->record_count,
         ];
     }

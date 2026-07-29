@@ -61,6 +61,14 @@ GET /api/v2/{secure_path}/plugin/xboard-statistic/ranking/{group}
 
 `health` 返回各节点最新分钟桶、接收延迟、节点端待报队列和重试次数。`traffic` 支持 `from`、`to`、`group_by`、`node_id`、`user_id`、`domain`、`source_ip`、`destination_ip`、`network`、`application_protocol`、`inbound_type`、`outbound`、`destination_port`、来源/目的国家和 ASN 等参数。查询范围上限为 90 天，返回行数有硬限制；趋势仍按小时聚合，避免长时间范围产生过密折线。
 
+## 时间与时区约定
+
+- 节点上报的 `bucket_start`、`bucket_end` 必须是 UTC 整分钟或整小时，并带 `Z`。
+- 批次时间、接收时间和明细时间以 Unix 秒字段作为查询、排序和延迟计算的权威值；兼容时间字段统一写成 UTC `YYYY-MM-DD HH:MM:SS`。
+- 管理 API 的输入必须是带 `Z` 或明确偏移量的 ISO 8601，输出统一为带 `Z` 的 UTC ISO 8601。
+- 页面中的时间筛选使用浏览器本地时区，提交时转换为 UTC；健康时间、数据更新时间和趋势横轴再由浏览器转换为用户时区展示。
+- 日汇总的 `day` 是 UTC 自然日，定时任务也固定按 UTC 调度，不受 Xboard、PHP、数据库或宿主机时区影响。
+
 ## 节点配置
 
 使用本项目配套修改后的 Xboard-Node fork，并仅在 Sing-box 节点上启用：
@@ -86,12 +94,15 @@ statistics:
 ```bash
 php artisan xboard-statistic:rollup --date=2026-07-28
 php artisan xboard-statistic:cleanup --dry-run
+php artisan xboard-statistic:update-geoip --force
 php artisan xboard-statistic:enrich-ips
 ```
 
 日汇总包含节点×用户、节点×域名、用户×节点、用户×域名、来源 IP×用户、目的 IP×域名。分钟事实、日汇总和批次元数据分别按插件设置保留。
 
-国家与 ASN 只使用面板服务器本地 MaxMind MMDB，不进行在线 IP 查询。需要在 Xboard 根目录安装 `geoip2/geoip2`，然后在插件设置中填写 Country 和 ASN MMDB 路径；未配置时相关维度显示为 `unknown`。
+国家与 ASN 只通过面板服务器上的离线 MMDB 查询，不会把访问 IP 发送给在线查询接口。插件安装包内置 MMDB 读取器，默认自动下载并按月更新 DB-IP Country Lite 和 ASN Lite，文件持久化到 Xboard 的 `.docker/.data/xboard-statistic/geoip`；Docker 容器重建或插件升级不会清空该目录。更新采用临时文件下载、MMDB 类型校验和原子替换，失败时继续使用上一份可用数据库。
+
+设置中的 Country/ASN MMDB 路径现在只是可选覆盖项：留空即可自动维护；填写后优先读取指定的 MaxMind GeoLite2/GeoIP2 或其他兼容 MMDB。目的 IP 排行会直接显示国家、ASN 和 AS 组织。DB-IP Lite 数据按 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 使用，页面保留 `IP Geolocation by DB-IP` 署名链接。
 
 ## 隐私提示
 

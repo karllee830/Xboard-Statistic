@@ -9,6 +9,7 @@ use DateTimeZone;
 use Illuminate\Console\Command;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
+use Plugin\XboardStatistic\Support\UtcTime;
 use Throwable;
 
 final class RollupStatisticsCommand extends Command
@@ -35,8 +36,9 @@ final class RollupStatisticsCommand extends Command
         }
 
         $date = $day->format('Y-m-d');
-        $from = $date . ' 00:00:00';
-        $to = $day->modify('+1 day')->format('Y-m-d') . ' 00:00:00';
+        $from = $day->getTimestamp();
+        $to = $day->modify('+1 day')->getTimestamp();
+        $now = UtcTime::database(UtcTime::now());
         $definitions = [
             'node_user' => ['node_id', 'user_id'],
             'node_domain' => ['node_id', 'domain_id'],
@@ -46,10 +48,10 @@ final class RollupStatisticsCommand extends Command
             'destination_ip_domain' => ['destination_ip_id', 'domain_id'],
         ];
 
-        DB::transaction(function () use ($definitions, $date, $from, $to): void {
+        DB::transaction(function () use ($definitions, $date, $from, $to, $now): void {
             DB::table('xbs_traffic_daily')->where('day', $date)->delete();
             foreach ($definitions as $type => [$left, $right]) {
-                $query = $this->rollupQuery($date, $type, $left, $right, $from, $to);
+                $query = $this->rollupQuery($date, $type, $left, $right, $from, $to, $now);
                 DB::table('xbs_traffic_daily')->insertUsing([
                     'day', 'summary_type', 'left_id', 'right_id',
                     'upload_bytes', 'download_bytes', 'connection_count', 'active_seconds',
@@ -68,19 +70,20 @@ final class RollupStatisticsCommand extends Command
         string $type,
         string $left,
         string $right,
-        string $from,
-        string $to,
+        int $from,
+        int $to,
+        string $now,
     ): Builder {
         return DB::table('xbs_traffic_hourly')
-            ->where('bucket_start', '>=', $from)
-            ->where('bucket_start', '<', $to)
+            ->where('bucket_start_unix', '>=', $from)
+            ->where('bucket_start_unix', '<', $to)
             ->whereNotNull($left)
             ->whereNotNull($right)
             ->selectRaw('? AS day, ? AS summary_type', [$date, $type])
             ->selectRaw("{$left} AS left_id, {$right} AS right_id")
             ->selectRaw('SUM(upload_bytes) AS upload_bytes, SUM(download_bytes) AS download_bytes')
             ->selectRaw('SUM(connection_count) AS connection_count, SUM(active_seconds) AS active_seconds')
-            ->selectRaw('CURRENT_TIMESTAMP AS created_at, CURRENT_TIMESTAMP AS updated_at')
+            ->selectRaw('? AS created_at, ? AS updated_at', [$now, $now])
             ->groupBy([$left, $right]);
     }
 }

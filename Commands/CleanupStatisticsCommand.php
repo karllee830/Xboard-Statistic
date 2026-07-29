@@ -7,6 +7,7 @@ namespace Plugin\XboardStatistic\Commands;
 use App\Services\Plugin\PluginManager;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Plugin\XboardStatistic\Support\UtcTime;
 
 final class CleanupStatisticsCommand extends Command
 {
@@ -21,26 +22,26 @@ final class CleanupStatisticsCommand extends Command
         $retentionDays = max(7, min(90, (int) ($plugin?->getConfig('hourly_retention_days', 30) ?? 30)));
         $dailyRetentionDays = max(30, min(730, (int) ($plugin?->getConfig('daily_retention_days', 365) ?? 365)));
         $batchRetentionDays = max(30, min(365, (int) ($plugin?->getConfig('batch_retention_days', 90) ?? 90)));
-        $utcNow = now('UTC');
-        $cutoff = $utcNow->copy()->subDays($retentionDays)->startOfHour();
-        $dailyCutoff = $utcNow->copy()->subDays($dailyRetentionDays)->startOfDay();
-        $batchCutoff = $utcNow->copy()->subDays($batchRetentionDays)->startOfHour();
+        $utcNow = UtcTime::now();
+        $cutoff = $utcNow->modify("-{$retentionDays} days")->setTime((int) $utcNow->format('H'), 0);
+        $dailyCutoff = $utcNow->modify("-{$dailyRetentionDays} days")->setTime(0, 0);
+        $batchCutoff = $utcNow->modify("-{$batchRetentionDays} days")->setTime((int) $utcNow->format('H'), 0);
 
-        $factCount = DB::table('xbs_traffic_hourly')->where('bucket_start', '<', $cutoff)->count();
-        $dailyCount = DB::table('xbs_traffic_daily')->where('day', '<', $dailyCutoff->toDateString())->count();
-        $batchCount = DB::table('xbs_report_batches')->where('bucket_start', '<', $batchCutoff)->count();
-        $this->line("hourly_cutoff={$cutoff->toIso8601String()} facts={$factCount}");
-        $this->line("daily_cutoff={$dailyCutoff->toDateString()} summaries={$dailyCount}");
-        $this->line("batch_cutoff={$batchCutoff->toIso8601String()} batches={$batchCount}");
+        $factCount = DB::table('xbs_traffic_hourly')->where('bucket_start_unix', '<', $cutoff->getTimestamp())->count();
+        $dailyCount = DB::table('xbs_traffic_daily')->where('day', '<', $dailyCutoff->format('Y-m-d'))->count();
+        $batchCount = DB::table('xbs_report_batches')->where('bucket_start_unix', '<', $batchCutoff->getTimestamp())->count();
+        $this->line('hourly_cutoff=' . UtcTime::iso($cutoff) . " facts={$factCount}");
+        $this->line('daily_cutoff=' . $dailyCutoff->format('Y-m-d') . " summaries={$dailyCount}");
+        $this->line('batch_cutoff=' . UtcTime::iso($batchCutoff) . " batches={$batchCount}");
 
         if ((bool) $this->option('dry-run')) {
             return self::SUCCESS;
         }
 
         DB::transaction(function () use ($cutoff, $dailyCutoff, $batchCutoff): void {
-            DB::table('xbs_traffic_hourly')->where('bucket_start', '<', $cutoff)->delete();
-            DB::table('xbs_traffic_daily')->where('day', '<', $dailyCutoff->toDateString())->delete();
-            DB::table('xbs_report_batches')->where('bucket_start', '<', $batchCutoff)->delete();
+            DB::table('xbs_traffic_hourly')->where('bucket_start_unix', '<', $cutoff->getTimestamp())->delete();
+            DB::table('xbs_traffic_daily')->where('day', '<', $dailyCutoff->format('Y-m-d'))->delete();
+            DB::table('xbs_report_batches')->where('bucket_start_unix', '<', $batchCutoff->getTimestamp())->delete();
 
             DB::table('xbs_domains')->whereNotExists(function ($query): void {
                 $query->selectRaw('1')

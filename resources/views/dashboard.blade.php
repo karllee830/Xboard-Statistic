@@ -214,6 +214,7 @@
         }
         .control-left, .control-right, .date-controls { display: flex; align-items: center; gap: 8px; }
         .control-label { color: var(--muted); font-size: 12px; font-weight: 650; }
+        .timezone-label { color: var(--muted); font-size: 11px; white-space: nowrap; }
         input, select {
             min-height: 36px;
             border: 1px solid var(--line-strong);
@@ -318,6 +319,10 @@
         .row-button { display: block; max-width: 340px; overflow: hidden; border: 0; background: transparent; padding: 0; color: var(--text-strong); cursor: pointer; font-weight: 670; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
         .row-button:hover { color: var(--brand); }
         .row-label { display: block; max-width: 340px; overflow: hidden; color: var(--text-strong); font-weight: 670; text-overflow: ellipsis; }
+        .ip-metadata { display: flex; min-width: 0; align-items: center; gap: 6px; }
+        .ip-badge { display: inline-flex; min-height: 23px; max-width: 260px; align-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-subtle); padding: 2px 7px; color: var(--muted-strong); font-size: 11px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
+        .ip-badge.country { border-color: color-mix(in srgb, var(--brand) 20%, var(--line)); background: var(--brand-soft); color: var(--brand); }
+        .ip-badge.unknown { color: var(--muted); font-weight: 550; }
         .row-drill-hint { flex: 0 0 auto; color: var(--muted); font-size: 11px; font-weight: 650; opacity: .78; transition: color .14s ease, opacity .14s ease; }
         tbody tr.drillable { cursor: pointer; }
         tbody tr.drillable:hover .row-button, tbody tr.drillable:hover .row-drill-hint { color: var(--brand); opacity: 1; }
@@ -327,6 +332,8 @@
         .bar span { display: block; height: 100%; border-radius: inherit; background: var(--brand); }
         .empty-state { padding: 46px 20px !important; color: var(--muted); text-align: center; }
         .pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line); padding: 12px 14px; color: var(--muted); font-size: 12px; }
+        .ranking-meta-group { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .geoip-credit { color: var(--muted); font-size: 11px; }
         .pagination-actions { display: flex; gap: 6px; }
 
         .health-summary { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
@@ -429,6 +436,7 @@
                 <span class="control-label">时间范围</span>
                 <input id="from" type="datetime-local" aria-label="开始时间">
                 <input id="to" type="datetime-local" aria-label="结束时间">
+                <span id="timezone-label" class="timezone-label" aria-label="当前显示时区"></span>
             </div>
             <button class="button" id="apply-time" type="button">应用时间</button>
             <button class="button" id="open-filters" type="button">更多筛选<span id="filter-count" class="filter-count hidden">0</span></button>
@@ -512,7 +520,10 @@
                     </table>
                 </div>
                 <div class="pagination">
-                    <span id="ranking-meta">0 项</span>
+                    <div class="ranking-meta-group">
+                        <span id="ranking-meta">0 项</span>
+                        <a class="geoip-credit" href="https://db-ip.com" target="_blank" rel="noopener noreferrer">IP Geolocation by DB-IP</a>
+                    </div>
                     <div class="pagination-actions">
                         <button class="button small" id="previous-page" type="button">上一页</button>
                         <button class="button small" id="next-page" type="button">下一页</button>
@@ -589,6 +600,8 @@ const API_BASE = @json($apiBase);
 const AUTH = window.XboardStatisticAuth;
 const $ = id => document.getElementById(id);
 const PAGE_SIZE = 30;
+const USER_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || '本地时区';
+const REGION_NAMES = typeof Intl.DisplayNames === 'function' ? new Intl.DisplayNames(['zh-CN'], {type: 'region'}) : null;
 const ADVANCED_FILTERS = ['source_ip','destination_ip','network','application_protocol','inbound_type','outbound','destination_port','source_country','destination_country','source_asn','destination_asn'];
 const DIMENSION_LABELS = {node:'节点',user:'用户',domain:'域名',source_ip:'来源 IP',destination_ip:'目的 IP',network:'网络',application_protocol:'应用协议',inbound_type:'入站类型',outbound:'出站',destination_port:'目的端口',source_country:'来源国家',destination_country:'目的国家',source_asn:'来源 ASN',destination_asn:'目的 ASN',time:'时间'};
 const FILTER_LABELS = {source_ip:'来源 IP',destination_ip:'目的 IP',network:'网络',application_protocol:'应用协议',inbound_type:'入站类型',outbound:'出站',destination_port:'目的端口',source_country:'来源国家',destination_country:'目的国家',source_asn:'来源 ASN',destination_asn:'目的 ASN'};
@@ -613,11 +626,26 @@ function token() {
 
 function localDate(value) {
     const date = new Date(value);
-    date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
-    return date.toISOString().slice(0, 16);
+    if (Number.isNaN(date.getTime())) return '';
+    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }
 
-function iso(value) { return value ? new Date(value).toISOString() : ''; }
+function iso(value, label) {
+    if (!value) throw new Error(`请选择${label}`);
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) throw new Error(`${label}无效`);
+    return date.toISOString();
+}
+
+function displayDateTime(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString('zh-CN', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    });
+}
 
 function bytes(value) {
     let number = Number(value || 0);
@@ -641,6 +669,18 @@ function duration(value) {
     if (seconds >= 3600) return `${(seconds / 3600).toFixed(1)} 小时`;
     if (seconds >= 60) return `${(seconds / 60).toFixed(1)} 分钟`;
     return `${seconds} 秒`;
+}
+
+function countryFlag(code) {
+    if (!/^[A-Z]{2}$/.test(code || '')) return '';
+    return [...code].map(character => String.fromCodePoint(127397 + character.charCodeAt(0))).join('');
+}
+
+function countryLabel(code) {
+    if (!/^[A-Z]{2}$/.test(code || '')) return '国家未知';
+    let name = code;
+    try { name = REGION_NAMES?.of(code) || code; } catch (_) {}
+    return `${countryFlag(code)} ${name} (${code})`;
 }
 
 function pathDimensions() { return state.perspective === 'node' ? ['node','user','domain'] : ['user','node','domain']; }
@@ -667,8 +707,11 @@ function currentFilters() {
 
 function buildParams(options = {}) {
     const params = new URLSearchParams();
-    params.set('from', iso($('from').value));
-    params.set('to', iso($('to').value));
+    const from = iso($('from').value, '开始时间');
+    const to = iso($('to').value, '结束时间');
+    if (new Date(to) <= new Date(from)) throw new Error('结束时间必须晚于开始时间');
+    params.set('from', from);
+    params.set('to', to);
     Object.entries(currentFilters()).forEach(([key, value]) => params.set(key, value));
     if (options.group) params.set('group_by', options.group);
     if (options.search) params.set('search', options.search);
@@ -865,6 +908,22 @@ function renderRanking(ranking) {
             label.onclick = event => { event.stopPropagation(); selectRankingItem(ranking.group_by, item); };
         }
         primary.appendChild(label);
+        if (['source_ip', 'destination_ip'].includes(ranking.group_by)
+            && !['unknown', '__other__'].includes(String(item.value))) {
+            const metadata = document.createElement('div');
+            metadata.className = 'ip-metadata';
+            const country = document.createElement('span');
+            country.className = `ip-badge country${item.country_code ? '' : ' unknown'}`;
+            country.textContent = countryLabel(item.country_code);
+            const asn = document.createElement('span');
+            asn.className = `ip-badge${item.asn ? '' : ' unknown'}`;
+            asn.textContent = item.asn
+                ? `AS${item.asn}${item.asn_organization ? ` · ${item.asn_organization}` : ''}`
+                : 'ASN 未知';
+            asn.title = asn.textContent;
+            metadata.append(country, asn);
+            primary.appendChild(metadata);
+        }
         if (drillable) {
             const dimensions = pathDimensions();
             const nextDimension = dimensions[dimensions.indexOf(ranking.group_by) + 1] || state.leafGroup;
@@ -950,8 +1009,8 @@ function renderHealth(items) {
         row.append(
             stateCell,
             node,
-            textCell(item.last_bucket_start || '—'),
-            textCell(item.last_received_at || '—'),
+            textCell(displayDateTime(item.last_bucket_start)),
+            textCell(displayDateTime(item.last_received_at)),
             numericCell(item.report_delay_seconds == null ? '—' : duration(item.report_delay_seconds)),
             numericCell(item.reported_pending_batches ?? '—'),
             numericCell(item.reported_retry_attempt ?? '—'),
@@ -1084,7 +1143,9 @@ function drawTrend() {
 }
 
 function formatChartTime(date) {
-    return date.toLocaleString('zh-CN', {month: 'numeric', day: 'numeric', hour: '2-digit', hour12: false});
+    return date.toLocaleString('zh-CN', {
+        month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
+    });
 }
 
 function handleChartPointer(event) {
@@ -1120,10 +1181,10 @@ function setLoading(loading, message = '') {
 async function load() {
     const requestId = ++state.requestId;
     setLoading(true);
-    renderStaticState();
-    syncUrl();
-    const group = currentGroup();
     try {
+        renderStaticState();
+        syncUrl();
+        const group = currentGroup();
         const [overview, ranking, trend, health] = await Promise.all([
             api('/overview', buildParams()),
             api('/traffic', buildParams({group, search: state.search, sort: state.sort, page: state.page})),
@@ -1135,13 +1196,15 @@ async function load() {
         renderRanking(ranking);
         renderTrend(trend.items || []);
         renderHealth(health.items || []);
-        const lastReceived = overview.last_received_at ? new Date(overview.last_received_at).toLocaleString('zh-CN', {month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'}) : null;
+        const lastReceived = overview.last_received_at
+            ? new Date(overview.last_received_at).toLocaleString('zh-CN', {month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit', hour12:false})
+            : null;
         setLoading(false, lastReceived ? `数据更新于 ${lastReceived}` : '已更新');
     } catch (error) {
         if (requestId !== state.requestId) return;
         setLoading(false, error.message);
         $('query-status').classList.add('error');
-        renderRanking({group_by: group, items: [], total: 0, grand_total_bytes: 0});
+        renderRanking({group_by: currentGroup(), items: [], total: 0, grand_total_bytes: 0});
         renderTrend([]);
     }
 }
@@ -1183,8 +1246,10 @@ function initFromUrl() {
     const query = new URLSearchParams(location.search);
     const now = new Date();
     const before = new Date(now.getTime() - 86400000);
-    $('from').value = query.has('from') ? localDate(query.get('from')) : localDate(before);
-    $('to').value = query.has('to') ? localDate(query.get('to')) : localDate(now);
+    $('from').value = (query.has('from') ? localDate(query.get('from')) : '') || localDate(before);
+    $('to').value = (query.has('to') ? localDate(query.get('to')) : '') || localDate(now);
+    $('timezone-label').textContent = USER_TIME_ZONE;
+    $('timezone-label').title = `筛选和页面时间按 ${USER_TIME_ZONE} 显示；请求以 UTC 发送`;
     state.perspective = query.get('view') === 'user' ? 'user' : 'node';
     state.leafGroup = ['destination_ip','outbound','application_protocol','destination_port','destination_country'].includes(query.get('leaf_group')) ? query.get('leaf_group') : 'destination_ip';
     if (query.get('node_id')) state.selected.node = {value: query.get('node_id'), label: query.get('node_label') || `节点 #${query.get('node_id')}`};

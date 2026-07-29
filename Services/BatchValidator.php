@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace Plugin\XboardStatistic\Services;
 
 use DateTimeImmutable;
-use DateTimeZone;
 use Plugin\XboardStatistic\Exceptions\IngestException;
 use Plugin\XboardStatistic\Support\IpAddress;
+use Plugin\XboardStatistic\Support\UtcTime;
 use Throwable;
 
 final class BatchValidator
@@ -56,7 +56,7 @@ final class BatchValidator
             throw new IngestException('invalid_bucket_range', "统计批次必须恰好覆盖{$label}", 422);
         }
 
-        $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+        $now = UtcTime::now();
         if ($bucketEnd > $now->modify('+5 minutes')) {
             throw new IngestException('future_bucket', '不能上报未来的时间桶', 422);
         }
@@ -201,7 +201,7 @@ final class BatchValidator
             $label = $bucketSeconds === 3600 ? 'UTC 整点' : 'UTC 整分钟';
             throw new IngestException('invalid_' . $field, "{$field} 必须是{$label}", 422);
         }
-        return $date->setTimezone(new DateTimeZone('UTC'));
+        return UtcTime::fromUnix($date->getTimestamp());
     }
 
     private function normalizeDomain(?string $domain): ?string
