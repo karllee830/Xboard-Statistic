@@ -466,9 +466,12 @@ final class TrafficQueryService
             'outbound' => $this->outboundMap($ids),
             default => [],
         };
+        $asnOrganizations = in_array($groupBy, ['source_asn', 'destination_asn'], true)
+            ? $this->asnOrganizationMap($rows)
+            : [];
 
         $rank = $offset;
-        return array_map(function (object $row) use ($groupBy, $grandTotal, $labels, &$rank): array {
+        return array_map(function (object $row) use ($groupBy, $grandTotal, $labels, $asnOrganizations, &$rank): array {
             $rank++;
             $value = match ($groupBy) {
                 'time' => UtcTime::iso(UtcTime::fromUnix((int) $row->group_time_unix)),
@@ -501,8 +504,40 @@ final class TrafficQueryService
                 $item['asn'] = $geo['asn'] ?? null;
                 $item['asn_organization'] = $geo['asn_organization'] ?? null;
             }
+            if (in_array($groupBy, ['source_asn', 'destination_asn'], true)
+                && ctype_digit((string) $value)) {
+                $item['asn_organization'] = $asnOrganizations[(int) $value] ?? null;
+            }
             return $item;
         }, $rows);
+    }
+
+    /**
+     * @param list<object> $rows
+     * @return array<int, string>
+     */
+    private function asnOrganizationMap(array $rows): array
+    {
+        $asns = array_values(array_unique(array_filter(array_map(
+            static fn (object $row): ?int => ctype_digit((string) ($row->group_value ?? ''))
+                ? (int) $row->group_value
+                : null,
+            $rows,
+        ))));
+        if ($asns === []) {
+            return [];
+        }
+
+        $organizations = [];
+        foreach (DB::table('xbs_ip_addresses')
+            ->whereIn('asn', $asns)
+            ->whereNotNull('asn_organization')
+            ->where('asn_organization', '<>', '')
+            ->orderBy('id')
+            ->get(['asn', 'asn_organization']) as $row) {
+            $organizations[(int) $row->asn] ??= (string) $row->asn_organization;
+        }
+        return $organizations;
     }
 
     private function simpleMap(string $table, array $ids, string $valueColumn): array

@@ -153,7 +153,7 @@
             transition: border-color .16s ease, background .16s ease, color .16s ease;
         }
         .button:hover, .icon-button:hover { border-color: var(--muted); background: var(--surface-subtle); }
-        .button:focus-visible, .icon-button:focus-visible, input:focus-visible, select:focus-visible, .row-button:focus-visible {
+        .button:focus-visible, .icon-button:focus-visible, input:focus-visible, select:focus-visible, .row-button:focus-visible, .summary-action:focus-visible {
             outline: 3px solid color-mix(in srgb, var(--brand) 28%, transparent);
             outline-offset: 2px;
         }
@@ -186,6 +186,7 @@
             color: var(--text-strong);
             box-shadow: var(--shadow);
         }
+        .segment button:disabled { color: var(--muted); cursor: not-allowed; opacity: .48; }
 
         .notice {
             margin-bottom: 16px;
@@ -268,7 +269,7 @@
 
         .summary-band {
             display: grid;
-            grid-template-columns: minmax(240px, 1.3fr) repeat(3, minmax(130px, .7fr));
+            grid-template-columns: minmax(240px, 1.3fr) repeat(4, minmax(115px, .6fr));
             margin-bottom: 16px;
             border: 1px solid var(--line);
             border-radius: 12px;
@@ -277,6 +278,11 @@
         }
         .summary-primary, .summary-stat { padding: 18px 20px; }
         .summary-stat { border-left: 1px solid var(--line); }
+        .summary-action { border-top: 0; border-right: 0; border-bottom: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; transition: background .14s ease; }
+        .summary-action:hover { background: var(--surface-subtle); }
+        .summary-action[aria-pressed="true"] { background: var(--brand-soft); }
+        .summary-action[aria-pressed="true"] .summary-label,
+        .summary-action[aria-pressed="true"] .summary-value { color: var(--brand); }
         .summary-label { color: var(--muted); font-size: 12px; font-weight: 650; }
         .summary-value { margin-top: 4px; color: var(--text-strong); font-size: 20px; font-weight: 730; letter-spacing: -.02em; }
         .summary-primary .summary-value { font-size: 30px; }
@@ -306,6 +312,8 @@
         .ranking-tools { display: flex; align-items: center; gap: 8px; }
         .ranking-tools input { width: 210px; }
         .ranking-tools select { width: 116px; }
+        .ranking-tools .dimension-select { width: 158px; }
+        .analysis-mode { flex: 0 0 auto; }
         .table-scroll { overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; }
         th, td { border-top: 1px solid var(--line); padding: 12px 14px; text-align: left; white-space: nowrap; }
@@ -372,9 +380,9 @@
             .control-bar { position: static; align-items: flex-start; }
             .control-left, .control-right { flex-wrap: wrap; }
             .date-controls { width: 100%; }
-            .summary-band { grid-template-columns: repeat(3, 1fr); }
+            .summary-band { grid-template-columns: repeat(4, 1fr); }
             .summary-primary { grid-column: 1 / -1; border-bottom: 1px solid var(--line); }
-            .summary-stat:first-of-type { border-left: 0; }
+            .summary-primary + .summary-stat { border-left: 0; }
         }
         @media (max-width: 820px) {
             .app-shell { padding: 18px 16px 36px; }
@@ -473,6 +481,10 @@
                     <div id="summary-scope-label" class="summary-label">活跃用户</div>
                     <div id="summary-scope-value" class="summary-value num">—</div>
                 </div>
+                <button class="summary-stat summary-action" id="summary-source-action" type="button" aria-pressed="false" title="查看来源 IP、国家和 ASN">
+                    <div class="summary-label">来源 IP</div>
+                    <div id="summary-source-ips" class="summary-value num">—</div>
+                </button>
                 <div class="summary-stat">
                     <div class="summary-label">域名识别率</div>
                     <div id="summary-quality" class="summary-value num">—</div>
@@ -486,12 +498,23 @@
                         <p id="ranking-subtitle" class="surface-kicker">选择一项继续分析</p>
                     </div>
                     <div class="ranking-tools">
-                        <select id="leaf-group" class="hidden" aria-label="继续分析维度">
-                            <option value="destination_ip">目的 IP</option>
+                        <div class="segment analysis-mode" aria-label="分析方向">
+                            <button id="analysis-mode-path" type="button" aria-pressed="true">流量路径</button>
+                            <button id="analysis-mode-source" type="button" aria-pressed="false">来源</button>
+                            <button id="analysis-mode-destination" type="button" aria-pressed="false">去向</button>
+                        </div>
+                        <select id="source-group" class="dimension-select hidden" aria-label="来源分析维度">
+                            <option value="source_ip">来源 IP · 国家 · ASN</option>
+                            <option value="source_country">来源国家</option>
+                            <option value="source_asn">来源 ASN</option>
+                        </select>
+                        <select id="destination-group" class="dimension-select hidden" aria-label="去向分析维度">
+                            <option value="destination_ip">目的 IP · 国家 · ASN</option>
+                            <option value="destination_country">目的国家</option>
+                            <option value="destination_asn">目的 ASN</option>
                             <option value="outbound">出站</option>
                             <option value="application_protocol">应用协议</option>
                             <option value="destination_port">目的端口</option>
-                            <option value="destination_country">目的国家</option>
                         </select>
                         <input id="ranking-search" type="search" placeholder="搜索当前排行" aria-label="搜索当前排行">
                         <select id="ranking-sort" aria-label="排序方式">
@@ -603,6 +626,8 @@ const PAGE_SIZE = 30;
 const USER_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || '本地时区';
 const REGION_NAMES = typeof Intl.DisplayNames === 'function' ? new Intl.DisplayNames(['zh-CN'], {type: 'region'}) : null;
 const ADVANCED_FILTERS = ['source_ip','destination_ip','network','application_protocol','inbound_type','outbound','destination_port','source_country','destination_country','source_asn','destination_asn'];
+const SOURCE_GROUPS = ['source_ip','source_country','source_asn'];
+const DESTINATION_GROUPS = ['destination_ip','destination_country','destination_asn','outbound','application_protocol','destination_port'];
 const DIMENSION_LABELS = {node:'节点',user:'用户',domain:'域名',source_ip:'来源 IP',destination_ip:'目的 IP',network:'网络',application_protocol:'应用协议',inbound_type:'入站类型',outbound:'出站',destination_port:'目的端口',source_country:'来源国家',destination_country:'目的国家',source_asn:'来源 ASN',destination_asn:'目的 ASN',time:'时间'};
 const FILTER_LABELS = {source_ip:'来源 IP',destination_ip:'目的 IP',network:'网络',application_protocol:'应用协议',inbound_type:'入站类型',outbound:'出站',destination_port:'目的端口',source_country:'来源国家',destination_country:'目的国家',source_asn:'来源 ASN',destination_asn:'目的 ASN'};
 
@@ -610,7 +635,9 @@ const state = {
     perspective: 'node',
     activeTab: 'analysis',
     selected: {node: null, user: null, domain: null},
-    leafGroup: 'destination_ip',
+    analysisMode: 'path',
+    sourceGroup: 'source_ip',
+    destinationGroup: 'destination_ip',
     page: 1,
     search: '',
     sort: 'total_bytes',
@@ -689,7 +716,11 @@ function nextPathDimension() {
     return pathDimensions().find(dimension => !state.selected[dimension]) || null;
 }
 
-function currentGroup() { return nextPathDimension() || state.leafGroup; }
+function currentGroup() {
+    if (state.analysisMode === 'source') return state.sourceGroup;
+    if (state.analysisMode === 'destination') return state.destinationGroup;
+    return nextPathDimension() || state.destinationGroup;
+}
 
 function advancedValue(key) { return $(`filter-${key}`).value.trim(); }
 
@@ -739,7 +770,13 @@ function syncUrl() {
     if (state.selected.node?.label) params.set('node_label', state.selected.node.label);
     if (state.selected.user?.label) params.set('user_label', state.selected.user.label);
     if (state.selected.domain?.label) params.set('domain_label', state.selected.domain.label);
-    if (state.leafGroup !== 'destination_ip') params.set('leaf_group', state.leafGroup);
+    if (state.analysisMode !== 'path') params.set('analysis_mode', state.analysisMode);
+    if (state.sourceGroup !== 'source_ip') params.set('source_group', state.sourceGroup);
+    if (state.destinationGroup !== 'destination_ip') params.set('destination_group', state.destinationGroup);
+    if (state.analysisMode === 'source') params.set('leaf_group', state.sourceGroup);
+    if (state.analysisMode === 'destination' && state.destinationGroup !== 'destination_ip') {
+        params.set('leaf_group', state.destinationGroup);
+    }
     history.replaceState(null, '', `${location.pathname}?${params}`);
 }
 
@@ -753,6 +790,7 @@ function clearDownstream(dimension, keepDimension = true) {
     const dimensions = pathDimensions();
     const index = dimensions.indexOf(dimension);
     dimensions.slice(index + (keepDimension ? 1 : 0)).forEach(key => { state.selected[key] = null; });
+    state.analysisMode = 'path';
     state.page = 1;
     state.search = '';
     $('ranking-search').value = '';
@@ -760,6 +798,7 @@ function clearDownstream(dimension, keepDimension = true) {
 
 function resetPath() {
     state.selected = {node: null, user: null, domain: null};
+    state.analysisMode = 'path';
     state.page = 1;
     state.search = '';
     $('ranking-search').value = '';
@@ -770,6 +809,33 @@ function setPerspective(perspective) {
     state.perspective = perspective;
     resetPath();
     renderStaticState();
+    load();
+}
+
+function resetRankingQuery() {
+    state.page = 1;
+    state.search = '';
+    $('ranking-search').value = '';
+}
+
+function setAnalysisMode(mode) {
+    if (mode === 'path' && !nextPathDimension()) return;
+    if (!['path','source','destination'].includes(mode) || state.analysisMode === mode) return;
+    state.analysisMode = mode;
+    resetRankingQuery();
+    renderRankingHeading();
+    load();
+}
+
+function setAnalysisGroup(side, group) {
+    const allowed = side === 'source' ? SOURCE_GROUPS : DESTINATION_GROUPS;
+    if (!allowed.includes(group)) return;
+    const key = side === 'source' ? 'sourceGroup' : 'destinationGroup';
+    if (state[key] === group && state.analysisMode === side) return;
+    state[key] = group;
+    state.analysisMode = side;
+    resetRankingQuery();
+    renderRankingHeading();
     load();
 }
 
@@ -847,15 +913,40 @@ function renderRankingHeading() {
         title = node && user ? `${user} 在 ${node} 的域名流量` : user ? `${user} 的域名流量` : '域名流量排行';
         subtitle = '选择一个域名，继续查看目的 IP、出站或协议分布';
     }
+    else if (group === 'source_ip') {
+        title = `${selectedContext()} 的来源 IP`;
+        subtitle = '每个来源 IP 直接标注国家、ASN 和网络运营组织';
+    }
+    else if (group === 'source_country') {
+        title = `${selectedContext()} 的来源国家分布`;
+        subtitle = '按来源 IP 所属国家汇总当前范围内的流量';
+    }
+    else if (group === 'source_asn') {
+        title = `${selectedContext()} 的来源 ASN 分布`;
+        subtitle = '按来源网络汇总流量，并显示对应的 AS 组织';
+    }
     else {
         title = `${domain || selectedContext()} 的${DIMENSION_LABELS[group]} 分布`;
-        subtitle = '已定位到具体域名，可切换维度继续观察流量去向';
+        subtitle = '可在来源画像和访问去向之间切换分析维度';
     }
     $('ranking-title').textContent = title;
     $('ranking-subtitle').textContent = subtitle;
-    $('ranking-dimension-heading').textContent = DIMENSION_LABELS[group] || '项目';
-    $('leaf-group').classList.toggle('hidden', Boolean(nextPathDimension()));
-    $('leaf-group').value = state.leafGroup;
+    $('ranking-dimension-heading').textContent = group === 'source_ip'
+        ? '来源 IP / 国家 / ASN'
+        : group === 'destination_ip'
+            ? '目的 IP / 国家 / ASN'
+            : DIMENSION_LABELS[group] || '项目';
+    const pathGroup = nextPathDimension();
+    $('analysis-mode-path').disabled = !pathGroup;
+    $('analysis-mode-path').title = pathGroup ? `继续查看${DIMENSION_LABELS[pathGroup]}` : '节点、用户和域名路径已定位';
+    ['path','source','destination'].forEach(mode => {
+        $(`analysis-mode-${mode}`).setAttribute('aria-pressed', String(state.analysisMode === mode));
+    });
+    $('source-group').classList.toggle('hidden', state.analysisMode !== 'source');
+    $('destination-group').classList.toggle('hidden', state.analysisMode !== 'destination');
+    $('source-group').value = state.sourceGroup;
+    $('destination-group').value = state.destinationGroup;
+    $('summary-source-action').setAttribute('aria-pressed', String(state.analysisMode === 'source' && state.sourceGroup === 'source_ip'));
     $('ranking-search').placeholder = `搜索${DIMENSION_LABELS[group] || '当前排行'}`;
 }
 
@@ -868,6 +959,7 @@ function renderSummary(overview) {
     const scopeIsNode = state.perspective === 'node' && !state.selected.node;
     $('summary-scope-label').textContent = scopeIsNode ? '活跃节点' : '活跃用户';
     $('summary-scope-value').textContent = Number(scopeIsNode ? overview.node_count : overview.user_count).toLocaleString();
+    $('summary-source-ips').textContent = Number(overview.source_ip_count || 0).toLocaleString();
     const quality = overview.quality?.domain_recognition_rate;
     $('summary-quality').textContent = quality == null ? '—' : `${(quality * 100).toFixed(1)}%`;
     $('trend-context').textContent = `${selectedContext()} · 当前时间范围的小时变化`;
@@ -900,8 +992,15 @@ function renderRanking(ranking) {
         primary.className = 'row-primary';
         const label = document.createElement(drillable ? 'button' : 'span');
         label.className = drillable ? 'row-button' : 'row-label';
-        label.textContent = item.label;
-        label.title = item.label;
+        const aggregateCountry = ['source_country', 'destination_country'].includes(ranking.group_by);
+        const aggregateAsn = ['source_asn', 'destination_asn'].includes(ranking.group_by);
+        const displayLabel = aggregateCountry && !['unknown', '__other__'].includes(String(item.value))
+            ? countryLabel(String(item.value))
+            : aggregateAsn && /^\d+$/.test(String(item.value))
+                ? `AS${item.value}`
+                : item.label;
+        label.textContent = displayLabel;
+        label.title = displayLabel;
         if (drillable) {
             label.type = 'button';
             label.setAttribute('aria-label', `查看${item.label}的下一层流量`);
@@ -924,9 +1023,16 @@ function renderRanking(ranking) {
             metadata.append(country, asn);
             primary.appendChild(metadata);
         }
+        if (aggregateAsn && item.asn_organization) {
+            const organization = document.createElement('span');
+            organization.className = 'ip-badge';
+            organization.textContent = item.asn_organization;
+            organization.title = item.asn_organization;
+            primary.appendChild(organization);
+        }
         if (drillable) {
             const dimensions = pathDimensions();
-            const nextDimension = dimensions[dimensions.indexOf(ranking.group_by) + 1] || state.leafGroup;
+            const nextDimension = dimensions[dimensions.indexOf(ranking.group_by) + 1] || state.destinationGroup;
             const hint = document.createElement('span');
             hint.className = 'row-drill-hint';
             hint.textContent = `查看${DIMENSION_LABELS[nextDimension] || '详情'} →`;
@@ -973,6 +1079,7 @@ function numericCell(text) {
 function selectRankingItem(dimension, item) {
     state.selected[dimension] = {value: String(item.value), label: String(item.label)};
     clearDownstream(dimension, true);
+    if (!nextPathDimension()) state.analysisMode = 'destination';
     renderStaticState();
     load();
 }
@@ -1251,12 +1358,25 @@ function initFromUrl() {
     $('timezone-label').textContent = USER_TIME_ZONE;
     $('timezone-label').title = `筛选和页面时间按 ${USER_TIME_ZONE} 显示；请求以 UTC 发送`;
     state.perspective = query.get('view') === 'user' ? 'user' : 'node';
-    state.leafGroup = ['destination_ip','outbound','application_protocol','destination_port','destination_country'].includes(query.get('leaf_group')) ? query.get('leaf_group') : 'destination_ip';
     if (query.get('node_id')) state.selected.node = {value: query.get('node_id'), label: query.get('node_label') || `节点 #${query.get('node_id')}`};
     if (query.get('user_id')) state.selected.user = {value: query.get('user_id'), label: query.get('user_label') || `用户 #${query.get('user_id')}`};
     if (query.get('domain')) state.selected.domain = {value: query.get('domain'), label: query.get('domain_label') || query.get('domain')};
+    const requestedGroup = query.get('leaf_group');
+    const requestedMode = query.get('analysis_mode');
+    const requestedSourceGroup = query.get('source_group');
+    const requestedDestinationGroup = query.get('destination_group');
+    if (SOURCE_GROUPS.includes(requestedSourceGroup)) state.sourceGroup = requestedSourceGroup;
+    else if (SOURCE_GROUPS.includes(requestedGroup)) state.sourceGroup = requestedGroup;
+    if (DESTINATION_GROUPS.includes(requestedDestinationGroup)) state.destinationGroup = requestedDestinationGroup;
+    else if (DESTINATION_GROUPS.includes(requestedGroup)) state.destinationGroup = requestedGroup;
+    if (requestedMode === 'source' || (!requestedMode && SOURCE_GROUPS.includes(requestedGroup))) {
+        state.analysisMode = 'source';
+    } else if (requestedMode === 'destination' || (!requestedMode && DESTINATION_GROUPS.includes(requestedGroup))) {
+        state.analysisMode = 'destination';
+    } else if (!nextPathDimension()) {
+        state.analysisMode = 'destination';
+    }
     ADVANCED_FILTERS.forEach(key => { $(`filter-${key}`).value = query.get(key) || ''; });
-    $('leaf-group').value = state.leafGroup;
 }
 
 function bindEvents() {
@@ -1275,7 +1395,12 @@ function bindEvents() {
     $('ranking-search-button').onclick = () => { state.search = $('ranking-search').value.trim(); state.page = 1; load(); };
     $('ranking-search').onkeydown = event => { if (event.key === 'Enter') $('ranking-search-button').click(); };
     $('ranking-sort').onchange = () => { state.sort = $('ranking-sort').value; state.page = 1; load(); };
-    $('leaf-group').onchange = () => { state.leafGroup = $('leaf-group').value; state.page = 1; state.search = ''; $('ranking-search').value = ''; renderRankingHeading(); load(); };
+    $('analysis-mode-path').onclick = () => setAnalysisMode('path');
+    $('analysis-mode-source').onclick = () => setAnalysisMode('source');
+    $('analysis-mode-destination').onclick = () => setAnalysisMode('destination');
+    $('source-group').onchange = () => setAnalysisGroup('source', $('source-group').value);
+    $('destination-group').onchange = () => setAnalysisGroup('destination', $('destination-group').value);
+    $('summary-source-action').onclick = () => setAnalysisGroup('source', 'source_ip');
     $('previous-page').onclick = () => { if (state.page > 1) { state.page--; load(); } };
     $('next-page').onclick = () => { if (state.ranking && state.page * PAGE_SIZE < state.ranking.total) { state.page++; load(); } };
     $('trend-canvas').addEventListener('pointermove', handleChartPointer);
