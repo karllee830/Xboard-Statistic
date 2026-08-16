@@ -60,6 +60,11 @@ final class TrafficQueryService
         };
         $direction = strtolower((string) $request->query('sort_order', $request->query('direction', 'desc'))) === 'asc' ? 'asc' : 'desc';
         $rows = $query->orderBy($sortColumn, $direction)->offset($offset)->limit($limit)->get();
+        $hasUnknownDomain = $groupBy === 'domain'
+            && $rows->contains(static fn (object $row): bool => $row->group_id === null);
+        $unknownDomainDestination = $hasUnknownDomain
+            ? $this->representativeUnknownDomainDestination($base)
+            : null;
 
         return [
             'from' => UtcTime::iso($from),
@@ -67,7 +72,13 @@ final class TrafficQueryService
             'group_by' => $groupBy,
             'grand_total_bytes' => $grandTotal,
             'total' => $groupCount,
-            'items' => $this->decorateRows($groupBy, $rows->all(), $grandTotal, $offset),
+            'items' => $this->decorateRows(
+                $groupBy,
+                $rows->all(),
+                $grandTotal,
+                $offset,
+                $unknownDomainDestination,
+            ),
         ];
     }
 
@@ -260,11 +271,15 @@ final class TrafficQueryService
 
         if ($request->query->has('domain')) {
             $domain = strtolower(rtrim(trim((string) $request->query('domain')), '.'));
-            $query->join('xbs_domains as filter_domain', 'filter_domain.id', '=', 'traffic.domain_id')
-                ->where(function (Builder $nested) use ($domain): void {
-                    $nested->where('filter_domain.exact_domain', $domain)
-                        ->orWhere('filter_domain.registrable_domain', $domain);
-                });
+            if ($domain === 'unknown') {
+                $query->whereNull('traffic.domain_id');
+            } else {
+                $query->join('xbs_domains as filter_domain', 'filter_domain.id', '=', 'traffic.domain_id')
+                    ->where(function (Builder $nested) use ($domain): void {
+                        $nested->where('filter_domain.exact_domain', $domain)
+                            ->orWhere('filter_domain.registrable_domain', $domain);
+                    });
+            }
         }
         $this->applyIpFilter($query, $request, 'source_ip', 'source_ip_id', 'source_ip_state');
         $this->applyIpFilter($query, $request, 'destination_ip', 'destination_ip_id', 'destination_ip_state');
@@ -452,7 +467,13 @@ final class TrafficQueryService
         return "CASE WHEN {$state} = 2 THEN '__other__' WHEN {$state} = 1 THEN {$known} ELSE 'unknown' END";
     }
 
-    private function decorateRows(string $groupBy, array $rows, string $grandTotal, int $offset): array
+    private function decorateRows(
+        string $groupBy,
+        array $rows,
+        string $grandTotal,
+        int $offset,
+        ?array $unknownDomainDestination = null,
+    ): array
     {
         $ids = array_values(array_unique(array_filter(array_map(
             static fn (object $row): ?int => isset($row->group_id) ? (int) $row->group_id : null,
@@ -471,7 +492,14 @@ final class TrafficQueryService
             : [];
 
         $rank = $offset;
-        return array_map(function (object $row) use ($groupBy, $grandTotal, $labels, $asnOrganizations, &$rank): array {
+        return array_map(function (object $row) use (
+            $groupBy,
+            $grandTotal,
+            $labels,
+            $asnOrganizations,
+            $unknownDomainDestination,
+            &$rank,
+        ): array {
             $rank++;
             $value = match ($groupBy) {
                 'time' => UtcTime::iso(UtcTime::fromUnix((int) $row->group_time_unix)),
@@ -508,8 +536,48 @@ final class TrafficQueryService
                 && ctype_digit((string) $value)) {
                 $item['asn_organization'] = $asnOrganizations[(int) $value] ?? null;
             }
+            if ($groupBy === 'domain' && $value === 'unknown') {
+                $item['unknown_domain'] = true;
+                $item['label'] = $unknownDomainDestination['ip'] ?? '未识别域名流量';
+                $item['representative_destination'] = $unknownDomainDestination;
+            }
             return $item;
         }, $rows);
+    }
+
+    /**
+     * Return a display hint only. The unknown-domain row keeps value=unknown so
+     * selecting it continues to include every destination in that traffic group.
+     *
+     * @return array{ip: string, country_code: ?string, asn: ?int, asn_organization: ?string, total_bytes: string}|null
+     */
+    private function representativeUnknownDomainDestination(Builder $base): ?array
+    {
+        $row = (clone $base)
+            ->whereNull('traffic.domain_id')
+            ->where('traffic.destination_ip_state', 1)
+            ->whereNotNull('traffic.destination_ip_id')
+            ->selectRaw('traffic.destination_ip_id AS group_id')
+            ->selectRaw('SUM(traffic.upload_bytes + traffic.download_bytes) AS total_bytes')
+            ->groupBy('traffic.destination_ip_id')
+            ->orderByDesc('total_bytes')
+            ->first();
+        if ($row === null) {
+            return null;
+        }
+
+        $ip = $this->ipMap([(int) $row->group_id])[(int) $row->group_id] ?? null;
+        if ($ip === null) {
+            return null;
+        }
+
+        return [
+            'ip' => $ip['value'],
+            'country_code' => $ip['country_code'],
+            'asn' => $ip['asn'],
+            'asn_organization' => $ip['asn_organization'],
+            'total_bytes' => (string) $row->total_bytes,
+        ];
     }
 
     /**

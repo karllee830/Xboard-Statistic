@@ -911,7 +911,7 @@ function renderRankingHeading() {
     }
     else if (group === 'domain') {
         title = node && user ? `${user} 在 ${node} 的域名流量` : user ? `${user} 的域名流量` : '域名流量排行';
-        subtitle = '选择一个域名，继续查看目的 IP、出站或协议分布';
+        subtitle = '选择一个域名继续下钻；未识别域名以流量最大的目的 IP 和 ASN 摘要显示';
     }
     else if (group === 'source_ip') {
         title = `${selectedContext()} 的来源 IP`;
@@ -935,7 +935,9 @@ function renderRankingHeading() {
         ? '来源 IP / 国家 / ASN'
         : group === 'destination_ip'
             ? '目的 IP / 国家 / ASN'
-            : DIMENSION_LABELS[group] || '项目';
+            : group === 'domain'
+                ? '域名 / 主目的 IP / ASN'
+                : DIMENSION_LABELS[group] || '项目';
     const pathGroup = nextPathDimension();
     $('analysis-mode-path').disabled = !pathGroup;
     $('analysis-mode-path').title = pathGroup ? `继续查看${DIMENSION_LABELS[pathGroup]}` : '节点、用户和域名路径已定位';
@@ -987,7 +989,9 @@ function renderRanking(ranking) {
         rank.textContent = String(item.rank);
         const name = document.createElement('td');
         name.className = 'dimension-cell';
-        const drillable = drillDimension === ranking.group_by && !['unknown','__other__'].includes(String(item.value));
+        const specialValue = ['unknown','__other__'].includes(String(item.value));
+        const drillable = drillDimension === ranking.group_by
+            && (!specialValue || (ranking.group_by === 'domain' && item.unknown_domain === true));
         const primary = document.createElement('div');
         primary.className = 'row-primary';
         const label = document.createElement(drillable ? 'button' : 'span');
@@ -1007,17 +1011,22 @@ function renderRanking(ranking) {
             label.onclick = event => { event.stopPropagation(); selectRankingItem(ranking.group_by, item); };
         }
         primary.appendChild(label);
-        if (['source_ip', 'destination_ip'].includes(ranking.group_by)
-            && !['unknown', '__other__'].includes(String(item.value))) {
+        const representativeDestination = ranking.group_by === 'domain'
+            ? item.representative_destination
+            : null;
+        const ipMetadata = ['source_ip', 'destination_ip'].includes(ranking.group_by) && !specialValue
+            ? item
+            : representativeDestination;
+        if (ipMetadata) {
             const metadata = document.createElement('div');
             metadata.className = 'ip-metadata';
             const country = document.createElement('span');
-            country.className = `ip-badge country${item.country_code ? '' : ' unknown'}`;
-            country.textContent = countryLabel(item.country_code);
+            country.className = `ip-badge country${ipMetadata.country_code ? '' : ' unknown'}`;
+            country.textContent = countryLabel(ipMetadata.country_code);
             const asn = document.createElement('span');
-            asn.className = `ip-badge${item.asn ? '' : ' unknown'}`;
-            asn.textContent = item.asn
-                ? `AS${item.asn}${item.asn_organization ? ` · ${item.asn_organization}` : ''}`
+            asn.className = `ip-badge${ipMetadata.asn ? '' : ' unknown'}`;
+            asn.textContent = ipMetadata.asn
+                ? `AS${ipMetadata.asn}${ipMetadata.asn_organization ? ` · ${ipMetadata.asn_organization}` : ''}`
                 : 'ASN 未知';
             asn.title = asn.textContent;
             metadata.append(country, asn);

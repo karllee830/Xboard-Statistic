@@ -1,7 +1,7 @@
 {
     "name": "Xboard Statistics",
     "code": "xboard_statistic",
-    "version": "0.2.9",
+    "version": "0.2.10",
     "description": "Sing-box 节点多维流量统计、排行与交叉下钻插件",
     "author": "karllee830",
     "type": "feature",
