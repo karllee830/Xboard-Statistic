@@ -331,6 +331,7 @@
         .ip-badge { display: inline-flex; min-height: 23px; max-width: 260px; align-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-subtle); padding: 2px 7px; color: var(--muted-strong); font-size: 11px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
         .ip-badge.country { border-color: color-mix(in srgb, var(--brand) 20%, var(--line)); background: var(--brand-soft); color: var(--brand); }
         .ip-badge.unknown { color: var(--muted); font-weight: 550; }
+        .ip-badge.more-destinations { border-style: dashed; border-color: color-mix(in srgb, var(--brand) 35%, var(--line)); background: transparent; color: var(--brand); font-weight: 680; }
         .row-drill-hint { flex: 0 0 auto; color: var(--muted); font-size: 11px; font-weight: 650; opacity: .78; transition: color .14s ease, opacity .14s ease; }
         tbody tr.drillable { cursor: pointer; }
         tbody tr.drillable:hover .row-button, tbody tr.drillable:hover .row-drill-hint { color: var(--brand); opacity: 1; }
@@ -911,7 +912,7 @@ function renderRankingHeading() {
     }
     else if (group === 'domain') {
         title = node && user ? `${user} 在 ${node} 的域名流量` : user ? `${user} 的域名流量` : '域名流量排行';
-        subtitle = '选择一个域名继续下钻；未识别域名以流量最大的目的 IP 和 ASN 摘要显示';
+        subtitle = '选择一个域名继续下钻；未识别域名显示主目的 IP 和 ASN，并标明其余目的数量';
     }
     else if (group === 'source_ip') {
         title = `${selectedContext()} 的来源 IP`;
@@ -1030,6 +1031,15 @@ function renderRanking(ranking) {
                 : 'ASN 未知';
             asn.title = asn.textContent;
             metadata.append(country, asn);
+            const destinationIpCount = Number(representativeDestination?.destination_ip_count || 0);
+            if (destinationIpCount > 1) {
+                const destinationAsnCount = Number(representativeDestination.destination_asn_count || 0);
+                const additional = document.createElement('span');
+                additional.className = 'ip-badge more-destinations';
+                additional.textContent = `另有 ${destinationIpCount - 1} 个目的 IP${destinationAsnCount > 1 ? ` · 共 ${destinationAsnCount} 个 ASN` : ''}`;
+                additional.title = `该未识别域名流量包含 ${destinationIpCount} 个目的 IP${destinationAsnCount > 0 ? `，分布于 ${destinationAsnCount} 个 ASN` : ''}；点击查看全部`;
+                metadata.appendChild(additional);
+            }
             primary.appendChild(metadata);
         }
         if (aggregateAsn && item.asn_organization) {
@@ -1044,7 +1054,9 @@ function renderRanking(ranking) {
             const nextDimension = dimensions[dimensions.indexOf(ranking.group_by) + 1] || state.destinationGroup;
             const hint = document.createElement('span');
             hint.className = 'row-drill-hint';
-            hint.textContent = `查看${DIMENSION_LABELS[nextDimension] || '详情'} →`;
+            hint.textContent = item.unknown_domain && nextDimension === 'destination_ip'
+                ? '查看全部目的 IP →'
+                : `查看${DIMENSION_LABELS[nextDimension] || '详情'} →`;
             primary.appendChild(hint);
             row.classList.add('drillable');
             row.onclick = () => selectRankingItem(ranking.group_by, item);

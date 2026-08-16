@@ -549,14 +549,33 @@ final class TrafficQueryService
      * Return a display hint only. The unknown-domain row keeps value=unknown so
      * selecting it continues to include every destination in that traffic group.
      *
-     * @return array{ip: string, country_code: ?string, asn: ?int, asn_organization: ?string, total_bytes: string}|null
+     * @return array{
+     *     ip: string,
+     *     country_code: ?string,
+     *     asn: ?int,
+     *     asn_organization: ?string,
+     *     total_bytes: string,
+     *     destination_ip_count: int,
+     *     destination_asn_count: int
+     * }|null
      */
     private function representativeUnknownDomainDestination(Builder $base): ?array
     {
-        $row = (clone $base)
+        $destinationScope = (clone $base)
             ->whereNull('traffic.domain_id')
             ->where('traffic.destination_ip_state', 1)
-            ->whereNotNull('traffic.destination_ip_id')
+            ->whereNotNull('traffic.destination_ip_id');
+        $counts = (clone $destinationScope)
+            ->leftJoin(
+                'xbs_ip_addresses as unknown_destination_geo',
+                'unknown_destination_geo.id',
+                '=',
+                'traffic.destination_ip_id',
+            )
+            ->selectRaw('COUNT(DISTINCT traffic.destination_ip_id) AS destination_ip_count')
+            ->selectRaw('COUNT(DISTINCT unknown_destination_geo.asn) AS destination_asn_count')
+            ->first();
+        $row = $destinationScope
             ->selectRaw('traffic.destination_ip_id AS group_id')
             ->selectRaw('SUM(traffic.upload_bytes + traffic.download_bytes) AS total_bytes')
             ->groupBy('traffic.destination_ip_id')
@@ -577,6 +596,8 @@ final class TrafficQueryService
             'asn' => $ip['asn'],
             'asn_organization' => $ip['asn_organization'],
             'total_bytes' => (string) $row->total_bytes,
+            'destination_ip_count' => (int) ($counts->destination_ip_count ?? 1),
+            'destination_asn_count' => (int) ($counts->destination_asn_count ?? 0),
         ];
     }
 

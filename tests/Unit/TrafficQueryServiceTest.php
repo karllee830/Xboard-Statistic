@@ -108,6 +108,8 @@ final class TrafficQueryServiceTest extends TestCase
         self::assertSame(62014, $unknown['representative_destination']['asn']);
         self::assertSame('Telegram Messenger Inc', $unknown['representative_destination']['asn_organization']);
         self::assertSame('1000', $unknown['representative_destination']['total_bytes']);
+        self::assertSame(2, $unknown['representative_destination']['destination_ip_count']);
+        self::assertSame(2, $unknown['representative_destination']['destination_asn_count']);
     }
 
     public function testUnknownDomainFilterKeepsTheWholeGroupForDestinationDrillDown(): void
