@@ -111,3 +111,9 @@ php artisan xboard-statistic:enrich-ips
 访问域名和来源 IP 属于敏感数据。插件查询仅允许管理员，查询进入 Xboard 请求日志；建议设置最短可用保留期，并按需启用“页面隐藏来源 IP”。该开关将 IPv4 显示为 `/24`、IPv6 显示为 `/48`，底层数据仍保留用于统计。
 
 版本化协议定义见 `resources/schema/report-v1.schema.json` 与 `resources/schema/report-v2.schema.json`。Schema 明确禁止额外字段，避免节点静默增加 User-Agent 等未授权维度。
+
+## 自动打包与发布
+
+推送或合并到 `main` 后，GitHub Actions 会自动执行补丁版本发布：读取 `config.json` 中的 `x.y.z`，递增为 `x.y.(z+1)`，由 `github-actions[bot]` 提交版本号并创建 `vX.Y.Z` tag。随后生成以 `XboardStatistic/` 为根目录的安装 ZIP 和 SHA-256 校验文件，同时上传为 Actions artifact（保留 30 天）和 GitHub Release 附件。也可在 Actions 页面手动运行 `Package and release plugin`。
+
+版本提交只修改 `config.json`，workflow 会忽略该提交并在提交信息中加入 `[skip ci]`，避免循环发布。仓库需要允许 GitHub Actions 对内容执行写操作；如果 `main` 启用了禁止机器人直接推送的分支保护，需要为该 workflow 配置相应的 bypass 权限或改用允许写入的发布分支。

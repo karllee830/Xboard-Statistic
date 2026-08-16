@@ -1,2 +1,10 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Keep development and automation files out of installable plugin archives.
+/.github export-ignore
+/tests export-ignore
+/.gitignore export-ignore
+/.gitattributes export-ignore
+/design-qa.md export-ignore
+/phpunit.xml export-ignore

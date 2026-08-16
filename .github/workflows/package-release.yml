@@ -1,0 +1,92 @@
+name: Package and release plugin
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - config.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: package-release-main
+  cancel-in-progress: false
+
+jobs:
+  package-release:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' || github.actor != 'github-actions[bot]')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Test version bump helper
+        run: node --test .github/scripts/bump-version.test.mjs
+
+      - name: Increment patch version
+        id: version
+        run: node .github/scripts/bump-version.mjs config.json
+
+      - name: Commit version and create tag
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if git rev-parse --verify --quiet "refs/tags/${TAG}"; then
+            echo "Tag ${TAG} already exists" >&2
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add config.json
+          git commit -m "chore(release): ${TAG} [skip ci]"
+          git tag --annotate "${TAG}" --message "Xboard Statistics ${TAG}"
+
+      - name: Build installable archive
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p dist
+          archive="dist/XboardStatistic-v${VERSION}.zip"
+          git archive --format=zip --prefix=XboardStatistic/ --output="${archive}" HEAD
+          unzip -t "${archive}"
+          (
+            cd dist
+            sha256sum "XboardStatistic-v${VERSION}.zip" > "XboardStatistic-v${VERSION}.zip.sha256"
+          )
+
+      - name: Push version commit and tag
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: git push origin "HEAD:${GITHUB_REF_NAME}" "${TAG}"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: XboardStatistic-${{ steps.version.outputs.version }}
+          path: |
+            dist/XboardStatistic-v${{ steps.version.outputs.version }}.zip
+            dist/XboardStatistic-v${{ steps.version.outputs.version }}.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "${TAG}" \
+            "dist/XboardStatistic-v${VERSION}.zip" \
+            "dist/XboardStatistic-v${VERSION}.zip.sha256" \
+            --title "Xboard Statistics ${TAG}" \
+            --generate-notes
