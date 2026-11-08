@@ -4,7 +4,7 @@
 
 namespace Composer\Autoload;
 
-class ComposerStaticInit953b59ac8adfd61e51fef25675b10e71
+class ComposerStaticInit618b3821e57a22cb9f1ac6507fce1dae
 {
     public static $prefixLengthsPsr4 = array (
         'P' =>
@@ -35,32 +35,48 @@ class ComposerStaticInit953b59ac8adfd61e51fef25675b10e71
         'MaxMind\\Db\\Reader\\InvalidDatabaseException' => __DIR__ . '/..' . '/maxmind-db/reader/src/MaxMind/Db/Reader/InvalidDatabaseException.php',
         'MaxMind\\Db\\Reader\\Metadata' => __DIR__ . '/..' . '/maxmind-db/reader/src/MaxMind/Db/Reader/Metadata.php',
         'MaxMind\\Db\\Reader\\Util' => __DIR__ . '/..' . '/maxmind-db/reader/src/MaxMind/Db/Reader/Util.php',
-        'Plugin\\XboardStatistic\\Commands\\CleanupStatisticsCommand' => __DIR__ . '/../..' . '/Commands/CleanupStatisticsCommand.php',
         'Plugin\\XboardStatistic\\Commands\\EnrichIpStatisticsCommand' => __DIR__ . '/../..' . '/Commands/EnrichIpStatisticsCommand.php',
-        'Plugin\\XboardStatistic\\Commands\\RollupStatisticsCommand' => __DIR__ . '/../..' . '/Commands/RollupStatisticsCommand.php',
+        'Plugin\\XboardStatistic\\Commands\\MaintainStatisticsCommand' => __DIR__ . '/../..' . '/Commands/MaintainStatisticsCommand.php',
         'Plugin\\XboardStatistic\\Commands\\UpdateGeoIpDatabasesCommand' => __DIR__ . '/../..' . '/Commands/UpdateGeoIpDatabasesCommand.php',
         'Plugin\\XboardStatistic\\Controllers\\Admin\\DashboardController' => __DIR__ . '/../..' . '/Controllers/Admin/DashboardController.php',
         'Plugin\\XboardStatistic\\Controllers\\Admin\\TrafficController' => __DIR__ . '/../..' . '/Controllers/Admin/TrafficController.php',
         'Plugin\\XboardStatistic\\Controllers\\ReportController' => __DIR__ . '/../..' . '/Controllers/ReportController.php',
         'Plugin\\XboardStatistic\\Exceptions\\IngestException' => __DIR__ . '/../..' . '/Exceptions/IngestException.php',
+        'Plugin\\XboardStatistic\\Exceptions\\QueryTimeoutException' => __DIR__ . '/../..' . '/Exceptions/QueryTimeoutException.php',
         'Plugin\\XboardStatistic\\Middleware\\DecodeStatisticsPayload' => __DIR__ . '/../..' . '/Middleware/DecodeStatisticsPayload.php',
         'Plugin\\XboardStatistic\\Middleware\\InjectAdminDashboardNavigation' => __DIR__ . '/../..' . '/Middleware/InjectAdminDashboardNavigation.php',
+        'Plugin\\XboardStatistic\\Middleware\\PrepareStatisticsAuth' => __DIR__ . '/../..' . '/Middleware/PrepareStatisticsAuth.php',
         'Plugin\\XboardStatistic\\Plugin' => __DIR__ . '/../..' . '/Plugin.php',
         'Plugin\\XboardStatistic\\Services\\BatchValidator' => __DIR__ . '/../..' . '/Services/BatchValidator.php',
+        'Plugin\\XboardStatistic\\Services\\DimensionStore' => __DIR__ . '/../..' . '/Services/DimensionStore.php',
         'Plugin\\XboardStatistic\\Services\\GeoIpDatabaseManager' => __DIR__ . '/../..' . '/Services/GeoIpDatabaseManager.php',
+        'Plugin\\XboardStatistic\\Services\\IpEnrichmentService' => __DIR__ . '/../..' . '/Services/IpEnrichmentService.php',
+        'Plugin\\XboardStatistic\\Services\\Query\\QueryGuard' => __DIR__ . '/../..' . '/Services/Query/QueryGuard.php',
+        'Plugin\\XboardStatistic\\Services\\Query\\TrafficFilters' => __DIR__ . '/../..' . '/Services/Query/TrafficFilters.php',
+        'Plugin\\XboardStatistic\\Services\\Query\\TrafficQueryBuilder' => __DIR__ . '/../..' . '/Services/Query/TrafficQueryBuilder.php',
+        'Plugin\\XboardStatistic\\Services\\Query\\TrafficQueryService' => __DIR__ . '/../..' . '/Services/Query/TrafficQueryService.php',
+        'Plugin\\XboardStatistic\\Services\\Query\\TrafficRowDecorator' => __DIR__ . '/../..' . '/Services/Query/TrafficRowDecorator.php',
+        'Plugin\\XboardStatistic\\Services\\Query\\TrafficSource' => __DIR__ . '/../..' . '/Services/Query/TrafficSource.php',
         'Plugin\\XboardStatistic\\Services\\ReportIngestService' => __DIR__ . '/../..' . '/Services/ReportIngestService.php',
-        'Plugin\\XboardStatistic\\Services\\TrafficQueryService' => __DIR__ . '/../..' . '/Services/TrafficQueryService.php',
+        'Plugin\\XboardStatistic\\Services\\StatisticsMaintenance' => __DIR__ . '/../..' . '/Services/StatisticsMaintenance.php',
+        'Plugin\\XboardStatistic\\Support\\AdminPath' => __DIR__ . '/../..' . '/Support/AdminPath.php',
+        'Plugin\\XboardStatistic\\Support\\ApiResponse' => __DIR__ . '/../..' . '/Support/ApiResponse.php',
         'Plugin\\XboardStatistic\\Support\\GeoIpRecord' => __DIR__ . '/../..' . '/Support/GeoIpRecord.php',
         'Plugin\\XboardStatistic\\Support\\IpAddress' => __DIR__ . '/../..' . '/Support/IpAddress.php',
+        'Plugin\\XboardStatistic\\Support\\MinutePartitions' => __DIR__ . '/../..' . '/Support/MinutePartitions.php',
+        'Plugin\\XboardStatistic\\Support\\MySqlRequirement' => __DIR__ . '/../..' . '/Support/MySqlRequirement.php',
+        'Plugin\\XboardStatistic\\Support\\PluginInfo' => __DIR__ . '/../..' . '/Support/PluginInfo.php',
+        'Plugin\\XboardStatistic\\Support\\Settings' => __DIR__ . '/../..' . '/Support/Settings.php',
+        'Plugin\\XboardStatistic\\Support\\Tables' => __DIR__ . '/../..' . '/Support/Tables.php',
         'Plugin\\XboardStatistic\\Support\\UtcTime' => __DIR__ . '/../..' . '/Support/UtcTime.php',
     );
 
     public static function getInitializer(ClassLoader $loader)
     {
         return \Closure::bind(function () use ($loader) {
-            $loader->prefixLengthsPsr4 = ComposerStaticInit953b59ac8adfd61e51fef25675b10e71::$prefixLengthsPsr4;
-            $loader->prefixDirsPsr4 = ComposerStaticInit953b59ac8adfd61e51fef25675b10e71::$prefixDirsPsr4;
-            $loader->classMap = ComposerStaticInit953b59ac8adfd61e51fef25675b10e71::$classMap;
+            $loader->prefixLengthsPsr4 = ComposerStaticInit618b3821e57a22cb9f1ac6507fce1dae::$prefixLengthsPsr4;
+            $loader->prefixDirsPsr4 = ComposerStaticInit618b3821e57a22cb9f1ac6507fce1dae::$prefixDirsPsr4;
+            $loader->classMap = ComposerStaticInit618b3821e57a22cb9f1ac6507fce1dae::$classMap;
 
         }, null, ClassLoader::class);
     }

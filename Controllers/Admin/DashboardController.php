@@ -6,21 +6,19 @@ namespace Plugin\XboardStatistic\Controllers\Admin;
 
 use App\Http\Controllers\PluginController;
 use Illuminate\Contracts\View\View;
+use Plugin\XboardStatistic\Support\AdminPath;
 
 final class DashboardController extends PluginController
 {
     public function index(): View
     {
-        $securePath = admin_setting(
-            'secure_path',
-            admin_setting('frontend_admin_path', hash('crc32b', config('app.key'))),
-        );
+        $adminUrl = url('/' . AdminPath::securePath());
 
         return view('XboardStatistic::dashboard', [
-            'apiBase' => url('/api/v2/' . $securePath . '/plugin/xboard-statistic'),
-            'adminUrl' => url('/' . $securePath),
-            'dashboardUrl' => url('/' . $securePath . '/xboard-statistic'),
-            'loginUrl' => url('/' . $securePath) . '#/sign-in',
+            'apiBase' => url(AdminPath::apiPrefix()),
+            'adminUrl' => $adminUrl,
+            'dashboardUrl' => url(AdminPath::dashboardPath()),
+            'loginUrl' => $adminUrl . '#/sign-in',
         ]);
     }
 }

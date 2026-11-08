@@ -12,7 +12,6 @@ use Throwable;
 
 final class UtcTime
 {
-    public const DATABASE_FORMAT = 'Y-m-d H:i:s';
     public const ISO_FORMAT = 'Y-m-d\TH:i:s\Z';
 
     public static function now(): DateTimeImmutable
@@ -36,37 +35,41 @@ final class UtcTime
 
         try {
             $time = new DateTimeImmutable($value);
-            $errors = DateTimeImmutable::getLastErrors();
-            if (is_array($errors) && ($errors['warning_count'] > 0 || $errors['error_count'] > 0)) {
-                throw new InvalidArgumentException('时间包含无效的日期或时刻');
-            }
-            return $time->setTimezone(self::timezone());
         } catch (Throwable $exception) {
-            if ($exception instanceof InvalidArgumentException) {
-                throw $exception;
-            }
             throw new InvalidArgumentException('时间不是有效的 ISO 8601 时间', previous: $exception);
         }
-    }
-
-    public static function parseStoredUtc(mixed $value): DateTimeImmutable
-    {
-        if ($value instanceof DateTimeInterface) {
-            return self::fromUnix($value->getTimestamp());
+        $errors = DateTimeImmutable::getLastErrors();
+        if (is_array($errors) && ($errors['warning_count'] > 0 || $errors['error_count'] > 0)) {
+            throw new InvalidArgumentException('时间包含无效的日期或时刻');
         }
 
-        return (new DateTimeImmutable((string) $value, self::timezone()))
-            ->setTimezone(self::timezone());
+        return $time->setTimezone(self::timezone());
     }
 
-    public static function database(DateTimeInterface $value): string
+    public static function iso(DateTimeInterface|int $value): string
     {
-        return self::fromUnix($value->getTimestamp())->format(self::DATABASE_FORMAT);
+        $timestamp = is_int($value) ? $value : $value->getTimestamp();
+        return self::fromUnix($timestamp)->format(self::ISO_FORMAT);
     }
 
-    public static function iso(DateTimeInterface $value): string
+    public static function isoOrNull(mixed $timestamp): ?string
     {
-        return self::fromUnix($value->getTimestamp())->format(self::ISO_FORMAT);
+        return $timestamp === null ? null : self::iso((int) $timestamp);
+    }
+
+    public static function floorHour(int $timestamp): int
+    {
+        return intdiv($timestamp, 3600) * 3600;
+    }
+
+    public static function ceilHour(int $timestamp): int
+    {
+        return intdiv($timestamp + 3599, 3600) * 3600;
+    }
+
+    public static function floorDay(int $timestamp): int
+    {
+        return intdiv($timestamp, 86400) * 86400;
     }
 
     private static function timezone(): DateTimeZone

@@ -7,6 +7,8 @@ namespace Plugin\XboardStatistic\Commands;
 use App\Services\Plugin\PluginManager;
 use Illuminate\Console\Command;
 use Plugin\XboardStatistic\Services\GeoIpDatabaseManager;
+use Plugin\XboardStatistic\Support\PluginInfo;
+use Plugin\XboardStatistic\Support\Settings;
 use Throwable;
 
 final class UpdateGeoIpDatabasesCommand extends Command
@@ -18,11 +20,11 @@ final class UpdateGeoIpDatabasesCommand extends Command
 
     public function handle(PluginManager $pluginManager, GeoIpDatabaseManager $manager): int
     {
-        $plugin = $pluginManager->getEnabledPlugins()['xboard_statistic'] ?? null;
+        $settings = Settings::fromPlugin($pluginManager->getEnabledPlugins()[PluginInfo::CODE] ?? null);
         try {
             $databases = $manager->ensure(
-                (string) ($plugin?->getConfig('geoip_country_mmdb', '') ?? ''),
-                (string) ($plugin?->getConfig('geoip_asn_mmdb', '') ?? ''),
+                $settings->countryMmdbOverride(),
+                $settings->asnMmdbOverride(),
                 (bool) $this->option('force'),
                 fn (string $message) => $this->line($message),
             );

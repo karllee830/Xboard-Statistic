@@ -6,6 +6,7 @@ namespace Plugin\XboardStatistic\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Plugin\XboardStatistic\Support\AdminPath;
 use Symfony\Component\HttpFoundation\Response;
 
 final class InjectAdminDashboardNavigation
@@ -15,10 +16,7 @@ final class InjectAdminDashboardNavigation
     public function handle(Request $request, Closure $next): Response
     {
         $response = $next($request);
-        $securePath = trim((string) admin_setting(
-            'secure_path',
-            admin_setting('frontend_admin_path', hash('crc32b', config('app.key'))),
-        ), '/');
+        $securePath = AdminPath::securePath();
 
         if (trim($request->path(), '/') !== $securePath || !$this->isHtml($response)) {
             return $response;
@@ -31,7 +29,7 @@ final class InjectAdminDashboardNavigation
             return $response;
         }
 
-        $dashboardUrl = url('/' . $securePath . '/xboard-statistic');
+        $dashboardUrl = url(AdminPath::dashboardPath());
         $script = $this->navigationScript($dashboardUrl);
         $position = strripos($content, '</body>');
         if ($position === false) {
@@ -73,15 +71,24 @@ final class InjectAdminDashboardNavigation
         }
     }
 
-    function resumeAfterLogin() {
-        if (sessionStorage.getItem(returnKey) !== dashboardUrl || !hasValidToken()) return;
-        sessionStorage.removeItem(returnKey);
-        window.location.assign(dashboardUrl);
+    function pendingReturn() {
+        try { return sessionStorage.getItem(returnKey) === dashboardUrl; } catch (_) { return false; }
     }
 
-    resumeAfterLogin();
-    const resumeTimer = window.setInterval(resumeAfterLogin, 300);
-    window.addEventListener('pagehide', () => window.clearInterval(resumeTimer), {once: true});
+    function resumeAfterLogin() {
+        if (!pendingReturn() || !hasValidToken()) return false;
+        sessionStorage.removeItem(returnKey);
+        window.location.assign(dashboardUrl);
+        return true;
+    }
+
+    // Poll only while a login started from the dashboard is waiting to return there.
+    if (pendingReturn() && !resumeAfterLogin()) {
+        const resumeTimer = window.setInterval(() => {
+            if (!pendingReturn() || resumeAfterLogin()) window.clearInterval(resumeTimer);
+        }, 300);
+        window.addEventListener('pagehide', () => window.clearInterval(resumeTimer), {once: true});
+    }
 
     document.addEventListener('click', event => {
         const link = event.target instanceof Element ? event.target.closest('a') : null;

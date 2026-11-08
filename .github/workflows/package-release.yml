@@ -16,7 +16,51 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  test:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' || github.actor != 'github-actions[bot]')
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: test
+          MYSQL_DATABASE: xbs_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -ptest"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_mysql, zlib, mbstring
+          coverage: none
+
+      - name: Install development dependencies
+        run: composer install --no-interaction --no-progress
+
+      - name: Run PHPUnit
+        env:
+          XBS_TEST_DB_HOST: 127.0.0.1
+          XBS_TEST_DB_PORT: 3306
+          XBS_TEST_DB_DATABASE: xbs_test
+          XBS_TEST_DB_USERNAME: root
+          XBS_TEST_DB_PASSWORD: test
+        run: vendor/bin/phpunit
+
   package-release:
+    needs: test
     if: >-
       github.ref == 'refs/heads/main' &&
       (github.event_name == 'workflow_dispatch' || github.actor != 'github-actions[bot]')

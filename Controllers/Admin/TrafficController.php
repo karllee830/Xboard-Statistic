@@ -8,17 +8,17 @@ use App\Http\Controllers\PluginController;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
-use Plugin\XboardStatistic\Services\TrafficQueryService;
+use Plugin\XboardStatistic\Exceptions\QueryTimeoutException;
+use Plugin\XboardStatistic\Services\Query\TrafficQueryService;
+use Plugin\XboardStatistic\Support\ApiResponse;
 use Plugin\XboardStatistic\Support\IpAddress;
+use Plugin\XboardStatistic\Support\Settings;
 
 final class TrafficController extends PluginController
 {
     public function authCheck(): JsonResponse
     {
-        return response()->json([
-            'status' => 'success',
-            'data' => ['authenticated' => true],
-        ]);
+        return ApiResponse::success(['authenticated' => true]);
     }
 
     public function traffic(Request $request, TrafficQueryService $service): JsonResponse
@@ -36,29 +36,10 @@ final class TrafficController extends PluginController
         return $this->respond(fn (): array => $service->health($request));
     }
 
-    public function ranking(Request $request, string $group, TrafficQueryService $service): JsonResponse
-    {
-        try {
-            $request->query->set('group_by', $group);
-            $result = $service->query($request);
-            $result = $this->maskSourceIps($result);
-            return response()->json([
-                'data' => $result['items'],
-                'total' => $result['total'],
-                'grand_total_bytes' => $result['grand_total_bytes'],
-            ]);
-        } catch (InvalidArgumentException $exception) {
-            return response()->json([
-                'message' => $exception->getMessage(),
-                'data' => [],
-                'total' => 0,
-            ], 422);
-        }
-    }
-
     private function maskSourceIps(array $result): array
     {
-        if (!(bool) $this->getConfig('mask_source_ip', false) || ($result['group_by'] ?? null) !== 'source_ip') {
+        $settings = Settings::fromGetter(fn (string $key, mixed $default): mixed => $this->getConfig($key, $default));
+        if (!$settings->maskSourceIp() || ($result['group_by'] ?? null) !== 'source_ip') {
             return $result;
         }
         foreach ($result['items'] as &$item) {
@@ -71,22 +52,15 @@ final class TrafficController extends PluginController
         return $result;
     }
 
+    /** @param callable(): array $callback */
     private function respond(callable $callback): JsonResponse
     {
         try {
-            return response()->json([
-                'status' => 'success',
-                'message' => 'success',
-                'data' => $callback(),
-                'error' => null,
-            ]);
+            return ApiResponse::success($callback());
         } catch (InvalidArgumentException $exception) {
-            return response()->json([
-                'status' => 'fail',
-                'message' => $exception->getMessage(),
-                'data' => null,
-                'error' => ['code' => 'invalid_query'],
-            ], 422);
+            return ApiResponse::fail('invalid_query', $exception->getMessage(), 422);
+        } catch (QueryTimeoutException $exception) {
+            return ApiResponse::fail('query_timeout', $exception->getMessage(), 422);
         }
     }
 }

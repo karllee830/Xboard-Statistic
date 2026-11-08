@@ -1,24 +1,30 @@
 # Xboard Statistics
 
-Xboard Statistics 是面向 Xboard 与 Xboard-Node Sing-box 内核的分钟级多维流量统计插件。
+Xboard Statistics is a minute-level, multi-dimensional traffic statistics plugin for Xboard and the Sing-box core of Xboard-Node.
 
-当前版本支持节点、用户、域名、来源 IP、目的 IP、网络、应用协议、入站、出站、目标端口、国家和 ASN 的排行、趋势、组合筛选及交叉下钻。User-Agent、URL 路径、查询参数、Cookie、正文和数据包内容均不会采集。
+It ranks, trends, filters and cross-drills traffic by node, user, domain, source IP, destination IP, network, application protocol, inbound, outbound, destination port, country and ASN. User-Agent, URL paths, query strings, cookies, bodies and packet contents are never collected.
 
-## 安装目录
+## Requirements
 
-将本仓库放置为 Xboard 的：
+- Xboard with the plugin system (Laravel 12, PHP 8.2+).
+- **MySQL 8.0.19 or newer.** SQLite, PostgreSQL and MariaDB are not supported; the migration stops with a clear error on any other database.
+- The companion Xboard-Node fork reporting schema v2 one-minute batches.
+
+## Installation
+
+Place this repository in Xboard as:
 
 ```text
 plugins/XboardStatistic
 ```
 
-然后在 Xboard 管理端安装并启用插件。插件启用后提供节点上报接口：
+Then install and enable the plugin in the Xboard admin panel. Once enabled, the plugin exposes the node report endpoint:
 
 ```text
 POST /api/v2/server/statistics/report
 ```
 
-接口沿用 Xboard `server.v2` 节点认证。请求正文可使用 gzip，并必须带有解压后 JSON 正文的 SHA-256：
+The endpoint reuses Xboard's `server.v2` node authentication. Credentials travel only in headers and are never written into node-side spool batches. The body may be gzip-compressed and must carry the SHA-256 of the decompressed JSON:
 
 ```text
 X-Statistics-Checksum: <64 lowercase hex characters>
@@ -29,51 +35,73 @@ Content-Encoding: gzip
 Content-Type: application/json
 ```
 
-认证字段只通过请求头发送，不写入本地待报批次。插件的解压中间件会在内存中把这些字段交给 Xboard `server.v2` 验证。
+Authentication runs before the body is decompressed, so unauthenticated requests never reach the gzip and JSON decoders. Compressed bodies are limited to 8 MiB and decompressed bodies to 64 MiB.
 
-本插件不改变 Xboard 原有计费上报逻辑。第一阶段仅支持修改后的 Xboard-Node Sing-box 内核。
+The plugin does not change Xboard's billing reports.
 
-## 管理页面
+## Admin page
 
-插件在 Xboard 左侧边栏只提供一个“流量分析”入口。入口会离开通用 CRUD 页面，直接打开完整的透视分析页：
+The plugin adds a single "流量分析" entry to the Xboard sidebar, which opens the full analysis page:
 
 ```text
-https://你的面板域名/{secure_path}/xboard-statistic
+https://<panel-domain>/{secure_path}/xboard-statistic
 ```
 
-`secure_path` 与 Xboard 管理后台的安全访问入口一致。页面进入前会检查管理端本地 Bearer token，并通过受保护接口确认管理员身份；未登录、登录过期或没有管理员权限时会直接跳转到后台登录页，登录成功后自动返回流量分析页。所有统计数据请求仍经过 Xboard `admin` 和 `log` 中间件。
+`secure_path` matches the Xboard admin entry. The page checks the local admin bearer token and confirms admin access through a protected endpoint; when the session is missing or expired it redirects to the admin login and returns to the analysis page afterwards. Every data request goes through Xboard's `admin` and `log` middleware.
 
-页面默认提供两条连续下钻路径：
+Two drill-down paths are available:
 
-- 节点视角：节点排行 → 节点内用户排行 → 指定用户在该节点的域名排行。
-- 用户视角：用户排行 → 用户使用的节点排行 → 指定用户在该节点的域名排行。
+- Node view: nodes → users on a node → domains of a user on that node.
+- User view: users → nodes used by a user → domains of a user on that node.
 
-当前分析路径会保留在面包屑和 URL 中，可随时返回任意上游层级。选中域名后还能继续查看目的 IP、出站、应用协议、目的端口或目的国家分布。IP、网络、协议、入站、出站、端口、国家和 ASN 等条件收纳在“更多筛选”中，并叠加到当前路径。
+The current path is kept in the breadcrumbs and the URL. After a domain is selected, the page continues to destination IP, outbound, application protocol, destination port or destination country. IP, network, protocol, inbound, outbound, port, country and ASN conditions live under "更多筛选" and stack on the current path.
 
-主排行使用“流量路径 / 来源 / 去向”三级模式：切换模式不会清空当前节点、用户、域名或高级筛选，来源与去向还会分别记住上次选择的 IP、国家、ASN 等维度。“来源 IP”概览卡可一键进入来源视图，流量路径完成后自动切换到去向视图。来源 IP 行会直接合并显示国家、ASN 和 AS 组织；来源国家使用本地化国家名与旗帜，来源 ASN 聚合同时显示组织名称。未识别域名不会显示为不可操作的 `unknown`，而是使用该组流量最大的已知目的 IP、国家和 ASN 作为摘要，并标明其余目的 IP 数量及多个 ASN 的总数；选择该行后仍会保留完整的未识别域名流量，并可继续查看全部目的 IP、出站或协议分布。若启用“页面隐藏来源 IP”，地址仍按 IPv4 `/24`、IPv6 `/48` 掩码展示，国家和 ASN 信息保留。
+The overview, ranking, trend and health panels load independently: a slow panel never blanks the others, a new query cancels the requests of the previous one, and requests give up after 30 seconds with a hint to narrow the range. Health data is loaded only when its tab is open.
 
-交叉查询 API：
+When "页面隐藏来源 IP" is enabled, source addresses are shown as IPv4 `/24` and IPv6 `/48` prefixes; country and ASN stay visible.
+
+## Query API
 
 ```text
 GET /api/v2/{secure_path}/plugin/xboard-statistic/overview
 GET /api/v2/{secure_path}/plugin/xboard-statistic/health
 GET /api/v2/{secure_path}/plugin/xboard-statistic/traffic
-GET /api/v2/{secure_path}/plugin/xboard-statistic/ranking/{group}
 ```
 
-`health` 返回各节点最新分钟桶、接收延迟、节点端待报队列和重试次数。`traffic` 支持 `from`、`to`、`group_by`、`node_id`、`user_id`、`domain`、`source_ip`、`destination_ip`、`network`、`application_protocol`、`inbound_type`、`outbound`、`destination_port`、来源/目的国家和 ASN 等参数；`domain=unknown` 专门筛选节点未识别出域名的完整流量组。查询范围上限为 90 天，返回行数有硬限制；趋势仍按小时聚合，避免长时间范围产生过密折线。
+`traffic` accepts `from`, `to`, `group_by`, `node_id`, `user_id`, `domain`, `source_ip`, `destination_ip`, `network`, `application_protocol`, `inbound_type`, `outbound`, `destination_port`, `source_country`, `destination_country`, `source_asn`, `destination_asn`, `search`, `sort_field`, `sort_order`, `current` and `pageSize`. `domain=unknown` selects the complete traffic whose domain the node could not identify. `group_by=time` returns the trend in chronological order: hourly points up to 31 days, daily points beyond.
 
-## 时间与时区约定
+`health` returns, per node, the latest minute bucket, receive delay, node-side pending queue and retry count.
 
-- 节点上报的 `bucket_start`、`bucket_end` 必须是 UTC 整分钟或整小时，并带 `Z`。
-- 批次时间、接收时间和明细时间以 Unix 秒字段作为查询、排序和延迟计算的权威值；兼容时间字段统一写成 UTC `YYYY-MM-DD HH:MM:SS`。
-- 管理 API 的输入必须是带 `Z` 或明确偏移量的 ISO 8601，输出统一为带 `Z` 的 UTC ISO 8601。
-- 页面中的时间筛选使用浏览器本地时区，提交时转换为 UTC；健康时间、数据更新时间和趋势横轴再由浏览器转换为用户时区展示。
-- 日汇总的 `day` 是 UTC 自然日，定时任务也固定按 UTC 调度，不受 Xboard、PHP、数据库或宿主机时区影响。
+Each response states the `from`/`to` range it actually covered and, for `traffic`, whether it was answered from `minute` facts or `hourly` rollups.
 
-## 节点配置
+## Storage model
 
-使用本项目配套修改后的 Xboard-Node fork，并仅在 Sing-box 节点上启用：
+| Table | Content | Retention |
+| --- | --- | --- |
+| `xbs_traffic_minute` | One row per node, minute and dimension combination; partitioned by UTC day | `minute_retention_days` (7–90) |
+| `xbs_traffic_hour_node_user` | Hourly totals per node and user | `rollup_retention_days` (30–730) |
+| `xbs_traffic_hour_node_user_domain` | Hourly totals per node, user and domain | `rollup_retention_days` |
+| `xbs_report_batches` | Batch metadata, quality counters and node queue health | `batch_retention_days` (30–365) |
+| `xbs_domains`, `xbs_ip_addresses`, `xbs_outbounds` | Dimension values, geo data and last-seen time | Until no retained data can reference them |
+
+Rollups are updated in the same transaction that stores a batch, so they are exact and include late reports. Queries are routed automatically:
+
+- Ranges longer than 24 hours that only involve node, user, domain and time read the hourly rollups. The range is aligned to whole UTC hours and the page shows the aligned range.
+- Everything else reads the minute facts at the exact range. Queries that need minute facts may span at most 90 days.
+- Every report query runs with a MySQL execution time limit and returns a clear error instead of hanging.
+- Distinct source/destination IP counts in the overview are computed only for ranges of 24 hours or less.
+
+## Time conventions
+
+- Nodes report `bucket_start` and `bucket_end` as whole UTC minutes with a `Z` suffix; a batch covers exactly one minute.
+- All stored times are Unix seconds, independent of the Xboard, PHP, database or host time zone.
+- Admin API inputs must be ISO 8601 with `Z` or an explicit offset; outputs are UTC ISO 8601 with `Z`.
+- The page uses the browser's local time zone for input and display and sends UTC to the API.
+- Partitions, rollup hours and scheduled jobs all use UTC.
+
+## Node configuration
+
+Use the companion Xboard-Node fork and enable statistics on Sing-box nodes only:
 
 ```yaml
 statistics:
@@ -87,33 +115,47 @@ statistics:
   disable_sniff: false
 ```
 
-详细统计按 UTC 分钟生成 schema v2 不可变 gzip 批次，通常在下一次分钟检查时上传；插件继续兼容旧节点的 schema v1 小时批次。失败批次原子持久化并指数退避重试；4xx 永久拒绝批次移到 `rejected` 目录。该链路独立于原计费上报。
+Nodes build immutable gzip batches per UTC minute (schema v2) and usually upload them at the next minute check. Failed batches are persisted atomically and retried with exponential backoff; batches permanently rejected with a 4xx status move to the `rejected` directory. This pipeline is independent of billing reports.
 
-## 日汇总、清理和 GeoIP
+## Scheduled jobs and GeoIP
 
-插件会由 Xboard Scheduler 自动运行以下命令，也可手动执行：
+The Xboard scheduler runs these commands automatically; they can also be run by hand:
 
 ```bash
-php artisan xboard-statistic:rollup --date=2026-07-28
-php artisan xboard-statistic:cleanup --dry-run
+php artisan xboard-statistic:maintain --dry-run
 php artisan xboard-statistic:update-geoip --force
 php artisan xboard-statistic:enrich-ips
 ```
 
-日汇总包含节点×用户、节点×域名、用户×节点、用户×域名、来源 IP×用户、目的 IP×域名。分钟事实、日汇总和批次元数据分别按插件设置保留。
+- `maintain` (daily, 03:20 UTC) prepares minute partitions seven days ahead, drops expired minute partitions, and deletes expired rollups, batches and unused dimension rows in small chunks. Partition changes use a short lock wait so they never queue report ingestion behind a long query.
+- `update-geoip` (daily, 04:05 UTC) keeps the managed DB-IP databases current.
+- `enrich-ips` (every 10 minutes) fills country, ASN and AS organization for new addresses, and re-checks addresses after a database update.
 
-国家与 ASN 只通过面板服务器上的离线 MMDB 查询，不会把访问 IP 发送给在线查询接口。插件安装包内置 MMDB 读取器，默认自动下载并按月更新 DB-IP Country Lite 和 ASN Lite，文件持久化到 Xboard 的 `.docker/.data/xboard-statistic/geoip`；Docker 容器重建或插件升级不会清空该目录。更新采用临时文件下载、MMDB 类型校验和原子替换，失败时继续使用上一份可用数据库。
+Country and ASN come only from offline MMDB files on the panel server; addresses are never sent to an online lookup service. The plugin bundles the MMDB reader and by default downloads and monthly refreshes DB-IP Country Lite and ASN Lite into Xboard's `.docker/.data/xboard-statistic/geoip`, which survives container rebuilds and plugin upgrades. Updates download to a temporary file, verify the MMDB type and replace the old file atomically; on failure the previous database stays in use.
 
-设置中的 Country/ASN MMDB 路径现在只是可选覆盖项：留空即可自动维护；填写后优先读取指定的 MaxMind GeoLite2/GeoIP2 或其他兼容 MMDB。目的 IP 排行会直接显示国家、ASN 和 AS 组织。DB-IP Lite 数据按 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 使用，页面保留 `IP Geolocation by DB-IP` 署名链接。
+The Country/ASN MMDB path settings are optional overrides: leave them empty for the managed databases, or point them at a MaxMind GeoLite2/GeoIP2 or other compatible MMDB. DB-IP Lite data is used under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) and the page keeps the `IP Geolocation by DB-IP` attribution link.
 
-## 隐私提示
+## Privacy
 
-访问域名和来源 IP 属于敏感数据。插件查询仅允许管理员，查询进入 Xboard 请求日志；建议设置最短可用保留期，并按需启用“页面隐藏来源 IP”。该开关将 IPv4 显示为 `/24`、IPv6 显示为 `/48`，底层数据仍保留用于统计。
+Visited domains and source IPs are sensitive. Only administrators can query them, and queries are recorded in the Xboard request log. Use the shortest retention that works for you and enable "页面隐藏来源 IP" when needed; it changes only what the page shows, not what is stored.
 
-版本化协议定义见 `resources/schema/report-v1.schema.json` 与 `resources/schema/report-v2.schema.json`。Schema 明确禁止额外字段，避免节点静默增加 User-Agent 等未授权维度。
+The protocol is defined in `resources/schema/report-v2.schema.json`. The schema forbids additional fields, so a node cannot silently start sending unapproved dimensions such as User-Agent.
 
-## 自动打包与发布
+## Development
 
-推送或合并到 `main` 后，GitHub Actions 会自动执行补丁版本发布：读取 `config.json` 中的 `x.y.z`，递增为 `x.y.(z+1)`，由 `github-actions[bot]` 提交版本号并创建 `vX.Y.Z` tag。随后生成以 `XboardStatistic/` 为根目录的安装 ZIP 和 SHA-256 校验文件，同时上传为 Actions artifact（保留 30 天）和 GitHub Release 附件。也可在 Actions 页面手动运行 `Package and release plugin`。
+Tests run against a disposable MySQL 8 database:
 
-版本提交只修改 `config.json`，workflow 会忽略该提交并在提交信息中加入 `[skip ci]`，避免循环发布。仓库需要允许 GitHub Actions 对内容执行写操作；如果 `main` 启用了禁止机器人直接推送的分支保护，需要为该 workflow 配置相应的 bypass 权限或改用允许写入的发布分支。
+```bash
+composer install
+XBS_TEST_DB_HOST=127.0.0.1 XBS_TEST_DB_PASSWORD=secret vendor/bin/phpunit
+```
+
+`XBS_TEST_DB_HOST`, `XBS_TEST_DB_PORT`, `XBS_TEST_DB_DATABASE` (default `xbs_test`), `XBS_TEST_DB_USERNAME` (default `root`) and `XBS_TEST_DB_PASSWORD` select the database. The tests drop and recreate the plugin tables in that database, so never point them at a production schema.
+
+The committed `vendor/` directory holds runtime dependencies only. After changing dependencies, rebuild it with `composer install --no-dev --optimize-autoloader`.
+
+## Packaging and releases
+
+Every push or merge to `main` runs the PHPUnit suite against MySQL 8.4 first. When it passes, GitHub Actions bumps the patch version in `config.json` (`x.y.z` → `x.y.(z+1)`), commits it as `github-actions[bot]`, tags `vX.Y.Z`, builds an installable ZIP rooted at `XboardStatistic/` with a SHA-256 checksum, and publishes both as an Actions artifact (kept for 30 days) and a GitHub Release. The workflow can also be started manually as `Package and release plugin`.
+
+The version commit only touches `config.json`; the workflow ignores it and marks it `[skip ci]` to avoid release loops. The repository must allow GitHub Actions to write contents; if branch protection on `main` blocks bot pushes, give the workflow a bypass or release from a writable branch.

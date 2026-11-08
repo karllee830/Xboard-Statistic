@@ -25,7 +25,16 @@ final class IpAddressTest extends TestCase
     public static function addresses(): iterable
     {
         yield 'IPv4' => ['198.51.100.7', '198.51.100.7', 4];
+        yield 'IPv4-mapped IPv6' => ['::ffff:198.51.100.7', '198.51.100.7', 4];
         yield 'IPv6 canonicalized' => ['2001:0DB8:0:0::8', '2001:db8::8', 6];
+    }
+
+    public function testIpv4AndMappedFormsShareOneStoredValue(): void
+    {
+        self::assertSame(
+            IpAddress::normalize('198.51.100.7')['packed'],
+            IpAddress::normalize('::FFFF:198.51.100.7')['packed'],
+        );
     }
 
     public function testUnknownAddressBecomesNull(): void
@@ -40,7 +49,6 @@ final class IpAddressTest extends TestCase
 
         self::assertSame('other', $normalized['kind']);
         self::assertNull($normalized['packed']);
-        self::assertSame(0, $normalized['version']);
     }
 
     public function testInvalidAddressIsRejected(): void

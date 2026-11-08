@@ -6,5 +6,4 @@
 /tests export-ignore
 /.gitignore export-ignore
 /.gitattributes export-ignore
-/design-qa.md export-ignore
 /phpunit.xml export-ignore

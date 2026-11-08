@@ -340,6 +340,7 @@
         .bar { width: 100px; height: 6px; overflow: hidden; border-radius: 999px; background: var(--line); }
         .bar span { display: block; height: 100%; border-radius: inherit; background: var(--brand); }
         .empty-state { padding: 46px 20px !important; color: var(--muted); text-align: center; }
+        .empty-state.error { color: var(--danger); }
         .pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line); padding: 12px 14px; color: var(--muted); font-size: 12px; }
         .ranking-meta-group { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .geoip-credit { color: var(--muted); font-size: 11px; }
@@ -642,7 +643,7 @@ const state = {
     page: 1,
     search: '',
     sort: 'total_bytes',
-    requestId: 0,
+    healthStale: true,
     ranking: null,
     trend: [],
     health: [],
@@ -753,10 +754,10 @@ function buildParams(options = {}) {
     return params;
 }
 
-async function api(path, params) {
+async function api(path, params, signal) {
     const auth = token();
     if (!auth) return AUTH.redirectToLogin();
-    const response = await fetch(`${API_BASE}${path}?${params}`, {headers: {Authorization: auth, Accept: 'application/json'}});
+    const response = await fetch(`${API_BASE}${path}?${params}`, {signal, headers: {Authorization: auth, Accept: 'application/json'}});
     if (response.status === 401 || response.status === 403) return AUTH.redirectToLogin();
     let body;
     try { body = await response.json(); }
@@ -962,10 +963,34 @@ function renderSummary(overview) {
     const scopeIsNode = state.perspective === 'node' && !state.selected.node;
     $('summary-scope-label').textContent = scopeIsNode ? '活跃节点' : '活跃用户';
     $('summary-scope-value').textContent = Number(scopeIsNode ? overview.node_count : overview.user_count).toLocaleString();
-    $('summary-source-ips').textContent = Number(overview.source_ip_count || 0).toLocaleString();
+    const sourceIps = overview.source_ip_count;
+    $('summary-source-ips').textContent = sourceIps == null ? '—' : Number(sourceIps).toLocaleString();
+    $('summary-source-ips').title = sourceIps == null ? '超过 24 小时的范围不统计去重来源 IP 数' : '';
     const quality = overview.quality?.domain_recognition_rate;
     $('summary-quality').textContent = quality == null ? '—' : `${(quality * 100).toFixed(1)}%`;
-    $('trend-context').textContent = `${selectedContext()} · 当前时间范围的小时变化`;
+}
+
+function renderSummaryError() {
+    $('summary-context').textContent = selectedContext();
+    ['summary-total','summary-upload','summary-download','summary-connections','summary-scope-value','summary-source-ips','summary-quality']
+        .forEach(id => { $(id).textContent = '—'; });
+}
+
+function renderRankingMessage(group, message) {
+    state.ranking = {group_by: group, items: [], total: 0, grand_total_bytes: 0};
+    renderRankingHeading();
+    const body = $('ranking-rows');
+    body.innerHTML = '';
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 7;
+    cell.className = 'empty-state error';
+    cell.textContent = message;
+    row.appendChild(cell);
+    body.appendChild(row);
+    $('ranking-meta').textContent = '0 项';
+    $('previous-page').disabled = state.page <= 1;
+    $('next-page').disabled = true;
 }
 
 function renderRanking(ranking) {
@@ -1181,11 +1206,24 @@ function inspectHealthNode(item) {
 }
 
 let trendPoints = [];
+let trendBucketSeconds = 3600;
+let trendEmptyText = '当前范围没有趋势数据';
 let hoverIndex = null;
 
-function renderTrend(items) {
-    trendPoints = [...items].sort((left, right) => new Date(left.value) - new Date(right.value));
+function renderTrend(trend) {
+    trendBucketSeconds = Number(trend.bucket_seconds || 3600);
+    trendEmptyText = '当前范围没有趋势数据';
+    trendPoints = [...(trend.items || [])].sort((left, right) => new Date(left.value) - new Date(right.value));
     hoverIndex = null;
+    $('trend-context').textContent = `${selectedContext()} · ${trendBucketSeconds >= 86400 ? '每日' : '每小时'}变化`;
+    drawTrend();
+}
+
+function renderTrendError(message) {
+    trendPoints = [];
+    trendEmptyText = message;
+    hoverIndex = null;
+    $('chart-tooltip').classList.add('hidden');
     drawTrend();
 }
 
@@ -1215,7 +1253,7 @@ function drawTrend() {
     context.lineWidth = 1;
     if (!trendPoints.length) {
         context.textAlign = 'center';
-        context.fillText('当前范围没有趋势数据', width / 2, height / 2);
+        context.fillText(trendEmptyText, width / 2, height / 2);
         return;
     }
     const max = Math.max(1, ...trendPoints.flatMap(item => [Number(item.upload_bytes || 0), Number(item.download_bytes || 0)]));
@@ -1271,6 +1309,9 @@ function drawTrend() {
 }
 
 function formatChartTime(date) {
+    if (trendBucketSeconds >= 86400) {
+        return date.toLocaleDateString('zh-CN', {month: 'numeric', day: 'numeric'});
+    }
     return date.toLocaleString('zh-CN', {
         month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
     });
@@ -1306,35 +1347,138 @@ function setLoading(loading, message = '') {
     $('query-status').classList.remove('error');
 }
 
-async function load() {
-    const requestId = ++state.requestId;
-    setLoading(true);
+const REQUEST_TIMEOUT_MS = 30000;
+const TIMEOUT_MESSAGE = '请求超时：请缩短时间范围，或先选择节点、用户';
+let analysisRequest = null;
+let healthRequest = null;
+
+/** Starts a cancellable request group that aborts itself after REQUEST_TIMEOUT_MS. */
+function startRequest(previous) {
+    previous?.abort();
+    const controller = new AbortController();
+    const request = {
+        signal: controller.signal,
+        timedOut: false,
+        timer: window.setTimeout(() => { request.timedOut = true; controller.abort(); }, REQUEST_TIMEOUT_MS),
+        abort: () => { window.clearTimeout(request.timer); controller.abort(); },
+        finish: () => window.clearTimeout(request.timer),
+    };
+    return request;
+}
+
+function requestErrorMessage(error, request) {
+    if (error?.name === 'AbortError') return request.timedOut ? TIMEOUT_MESSAGE : null;
+    return error?.message || '请求失败';
+}
+
+/** Runs one panel's request; stale results from a superseded request are dropped. */
+async function loadPanel(request, isCurrent, fetcher, onSuccess, onError) {
     try {
-        renderStaticState();
-        syncUrl();
-        const group = currentGroup();
-        const [overview, ranking, trend, health] = await Promise.all([
-            api('/overview', buildParams()),
-            api('/traffic', buildParams({group, search: state.search, sort: state.sort, page: state.page})),
-            api('/traffic', buildParams({group: 'time', limit: 500})),
-            api('/health', buildParams({limit: 500})),
-        ]);
-        if (requestId !== state.requestId) return;
-        renderSummary(overview);
-        renderRanking(ranking);
-        renderTrend(trend.items || []);
-        renderHealth(health.items || []);
-        const lastReceived = overview.last_received_at
-            ? new Date(overview.last_received_at).toLocaleString('zh-CN', {month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit', hour12:false})
-            : null;
-        setLoading(false, lastReceived ? `数据更新于 ${lastReceived}` : '已更新');
+        const data = await fetcher();
+        if (!isCurrent()) return {stale: true};
+        onSuccess(data);
+        return {data};
     } catch (error) {
-        if (requestId !== state.requestId) return;
+        if (!isCurrent()) return {stale: true};
+        const message = requestErrorMessage(error, request);
+        if (message === null) return {stale: true};
+        onError(message);
+        return {error: message};
+    }
+}
+
+function rangeNotice(response) {
+    if (!response?.from || !response?.to) return '';
+    const requestedFrom = new Date($('from').value).getTime();
+    const requestedTo = new Date($('to').value).getTime();
+    const actualFrom = new Date(response.from).getTime();
+    const actualTo = new Date(response.to).getTime();
+    if (Math.abs(actualFrom - requestedFrom) < 60000 && Math.abs(actualTo - requestedTo) < 60000) return '';
+    return `已按整点统计 ${formatRangeTime(response.from)}–${formatRangeTime(response.to)}`;
+}
+
+function formatRangeTime(value) {
+    return new Date(value).toLocaleString('zh-CN', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false});
+}
+
+async function load() {
+    renderStaticState();
+    try {
+        syncUrl();
+        buildParams();
+    } catch (error) {
         setLoading(false, error.message);
         $('query-status').classList.add('error');
-        renderRanking({group_by: currentGroup(), items: [], total: 0, grand_total_bytes: 0});
-        renderTrend([]);
+        return;
     }
+
+    const request = startRequest(analysisRequest);
+    analysisRequest = request;
+    const isCurrent = () => analysisRequest === request;
+    const signal = request.signal;
+    const group = currentGroup();
+    setLoading(true);
+
+    if (state.activeTab === 'health') loadHealth();
+    else state.healthStale = true;
+
+    const [overview, ranking, trend] = await Promise.all([
+        loadPanel(request, isCurrent, () => api('/overview', buildParams(), signal), renderSummary, renderSummaryError),
+        loadPanel(
+            request,
+            isCurrent,
+            () => api('/traffic', buildParams({group, search: state.search, sort: state.sort, page: state.page}), signal),
+            renderRanking,
+            message => renderRankingMessage(group, message),
+        ),
+        loadPanel(request, isCurrent, () => api('/traffic', buildParams({group: 'time'}), signal), renderTrend, renderTrendError),
+    ]);
+    request.finish();
+    if (!isCurrent()) return;
+
+    const errors = [overview, ranking, trend].map(result => result.error).filter(Boolean);
+    if (errors.length) {
+        setLoading(false, [...new Set(errors)].join('；'));
+        $('query-status').classList.add('error');
+        return;
+    }
+    const lastReceived = overview.data?.last_received_at
+        ? `数据更新于 ${formatRangeTime(overview.data.last_received_at)}`
+        : '已更新';
+    const notice = rangeNotice(overview.data);
+    setLoading(false, notice ? `${lastReceived} · ${notice}` : lastReceived);
+}
+
+async function loadHealth() {
+    let params;
+    try { params = buildParams(); } catch (error) { renderHealthError(error.message); return; }
+    const request = startRequest(healthRequest);
+    healthRequest = request;
+    state.healthStale = false;
+    const isCurrent = () => healthRequest === request;
+    $('health-summary').textContent = '正在加载…';
+    await loadPanel(
+        request,
+        isCurrent,
+        () => api('/health', params, request.signal),
+        health => renderHealth(health.items || []),
+        renderHealthError,
+    );
+    request.finish();
+}
+
+function renderHealthError(message) {
+    state.health = [];
+    $('health-summary').textContent = message;
+    const body = $('health-rows');
+    body.innerHTML = '';
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 9;
+    cell.className = 'empty-state error';
+    cell.textContent = message;
+    row.appendChild(cell);
+    body.appendChild(row);
 }
 
 function setActiveTab(tab) {
@@ -1346,6 +1490,7 @@ function setActiveTab(tab) {
     $('perspective-node').disabled = tab !== 'analysis';
     $('perspective-user').disabled = tab !== 'analysis';
     if (tab === 'analysis') requestAnimationFrame(drawTrend);
+    if (tab === 'health' && state.healthStale) loadHealth();
 }
 
 function openFilters() {

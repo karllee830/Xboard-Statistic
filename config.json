@@ -1,7 +1,7 @@
 {
     "name": "Xboard Statistics",
     "code": "xboard_statistic",
-    "version": "0.2.12",
+    "version": "0.3.0",
     "description": "Sing-box 节点多维流量统计、排行与交叉下钻插件",
     "author": "karllee830",
     "type": "feature",
@@ -9,17 +9,17 @@
         "xboard": ">=1.0.0"
     },
     "config": {
-        "hourly_retention_days": {
+        "minute_retention_days": {
             "type": "number",
             "default": 30,
-            "label": "明细数据保留天数",
-            "description": "分钟事实明细的保留时间（7-90 天；配置键为兼容旧版本保留）"
+            "label": "分钟明细保留天数",
+            "description": "分钟明细数据的保留时间（7-90 天），按 UTC 自然日整天删除"
         },
-        "daily_retention_days": {
+        "rollup_retention_days": {
             "type": "number",
             "default": 365,
-            "label": "日汇总保留天数",
-            "description": "日级汇总数据的保留时间"
+            "label": "小时汇总保留天数",
+            "description": "节点、用户和域名小时汇总的保留时间（30-730 天，且不短于分钟明细）"
         },
         "batch_retention_days": {
             "type": "number",
@@ -31,7 +31,7 @@
             "type": "number",
             "default": 14,
             "label": "最大补报天数",
-            "description": "拒绝比该值更早的统计批次"
+            "description": "拒绝比该值更早的统计批次（不超过分钟明细保留天数）"
         },
         "max_records_per_batch": {
             "type": "number",

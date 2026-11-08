@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Plugin\XboardStatistic\Services;
 
+use DateTimeImmutable;
+use DateTimeZone;
 use MaxMind\Db\Reader;
+use Plugin\XboardStatistic\Support\PluginInfo;
 use RuntimeException;
 use Throwable;
 
@@ -230,7 +233,7 @@ final class GeoIpDatabaseManager
             CURLOPT_FAILONERROR => true,
             CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
             CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
-            CURLOPT_USERAGENT => 'Xboard-Statistic-GeoIP/0.2.7',
+            CURLOPT_USERAGENT => 'Xboard-Statistic-GeoIP/' . PluginInfo::version(),
             CURLOPT_WRITEFUNCTION => static function ($handle, string $data) use ($output, &$downloaded): int {
                 $downloaded += strlen($data);
                 if ($downloaded > self::MAX_COMPRESSED_BYTES) {
@@ -314,7 +317,7 @@ final class GeoIpDatabaseManager
     /** @return list<string> */
     private function releaseCandidates(): array
     {
-        $current = new \DateTimeImmutable('first day of this month 00:00:00', new \DateTimeZone('UTC'));
+        $current = new DateTimeImmutable('first day of this month 00:00:00', new DateTimeZone('UTC'));
         return [
             $current->format('Y-m'),
             $current->modify('-1 month')->format('Y-m'),

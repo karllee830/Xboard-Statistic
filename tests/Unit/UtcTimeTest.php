@@ -16,15 +16,21 @@ final class UtcTimeTest extends TestCase
 
         self::assertSame(1785257670, $time->getTimestamp());
         self::assertSame('2026-07-28T16:54:30Z', UtcTime::iso($time));
-        self::assertSame('2026-07-28 16:54:30', UtcTime::database($time));
     }
 
     public function testUnixTimestampRoundTripsWithoutServerTimezone(): void
     {
-        $timestamp = 1785257670;
+        self::assertSame('2026-07-28T16:54:30Z', UtcTime::iso(1785257670));
+        self::assertSame(1785257670, UtcTime::fromUnix(1785257670)->getTimestamp());
+        self::assertNull(UtcTime::isoOrNull(null));
+    }
 
-        self::assertSame($timestamp, UtcTime::fromUnix($timestamp)->getTimestamp());
-        self::assertSame('2026-07-28T16:54:30Z', UtcTime::iso(UtcTime::fromUnix($timestamp)));
+    public function testHourAndDayBoundaries(): void
+    {
+        self::assertSame(1785254400, UtcTime::floorHour(1785257670));
+        self::assertSame(1785258000, UtcTime::ceilHour(1785257670));
+        self::assertSame(1785254400, UtcTime::ceilHour(1785254400));
+        self::assertSame(1785196800, UtcTime::floorDay(1785257670));
     }
 
     public function testApiTimeMustContainAnExplicitTimezone(): void
